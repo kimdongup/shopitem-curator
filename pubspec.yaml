@@ -1,0 +1,61 @@
+name: shopitem_curator
+description: "A School Supplies Curator & Visual Annotator app built with Flutter & Pure Dart BLoC."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  http_parser: ^4.1.2
+  image: ^4.9.2
+  url_launcher: ^6.3.0
+  cupertino_icons: ^1.0.8
+  file_selector: ^1.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  test: ^1.25.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Explicit public samples only. Runtime uploads are read from the backend,
+    # never bundled into a public client.
+    - assets/images/new.jpg
+    - assets/images/media_1787068853075.jpg
+    - assets/items/manifest_new.json
+    - assets/items/manifest_media_1787068853075.json
+    - assets/items/canvas_new.png
+    - assets/items/canvas_media_1787068853075.png
+    - assets/items/item_backpack.png
+    - assets/items/item_caddy.png
+    - assets/items/item_colored_pencils.png
+    - assets/items/item_construction_paper.png
+    - assets/items/item_crayons.png
+    - assets/items/item_erasers.png
+    - assets/items/item_flashcards_add.png
+    - assets/items/item_flashcards_sub.png
+    - assets/items/item_folder_paper.png
+    - assets/items/item_folders.png
+    - assets/items/item_glue.png
+    - assets/items/item_hand_sanitizer.png
+    - assets/items/item_hand_soap.png
+    - assets/items/item_headphones.png
+    - assets/items/item_notebook.png
+    - assets/items/item_pencil_box.png
+    - assets/items/item_pencils.png
+    - assets/items/item_scissors.png
+    - assets/items/item_sharpener.png
+    - assets/items/item_sharpie.png
+    - assets/items/item_super_tips.png
+    - assets/items/item_tissue.png
+    - assets/items/item_watercolor.png
+    - assets/items/item_whiteboard_markers.png
+    - assets/items/item_wipes.png

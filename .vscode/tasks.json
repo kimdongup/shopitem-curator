@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Curator: Chrome (ready)",
+      "type": "shell",
+      "command": "bash tool/run_dev.sh --device chrome",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-l", "-i", "-c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Curator: macOS (ready)",
+      "type": "shell",
+      "command": "bash tool/run_dev.sh --device macos",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-l", "-i", "-c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Curator: Backend readiness check",
+      "type": "shell",
+      "command": "bash tool/run_dev.sh --check",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-l", "-i", "-c"]
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

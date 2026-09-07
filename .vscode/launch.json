@@ -1,0 +1,63 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Curator Proxy Server",
+      "request": "launch",
+      "type": "dart",
+      "program": "server/curator_proxy_server.dart",
+      "cwd": "${workspaceFolder}",
+      "customTool": "${workspaceFolder}/tool/dart_proxy_with_login_env.sh",
+      "env": {
+        "CURATOR_PROXY_HOST": "127.0.0.1",
+        "CURATOR_PROXY_PORT": "8787",
+        "CURATOR_ALLOW_UNAUTHENTICATED_LOOPBACK": "true"
+      }
+    },
+    {
+      "name": "Flutter: Chrome",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "deviceId": "chrome",
+      "flutterMode": "debug",
+      "customTool": "${workspaceFolder}/tool/flutter_without_server_secrets.sh",
+      "toolArgs": [
+        "--web-port=3000",
+        "--dart-define=CURATOR_BACKEND_URL=http://127.0.0.1:8787"
+      ]
+    },
+    {
+      "name": "Flutter: macOS",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "deviceId": "macos",
+      "flutterMode": "debug",
+      "customTool": "${workspaceFolder}/tool/flutter_without_server_secrets.sh",
+      "toolArgs": [
+        "--dart-define=CURATOR_BACKEND_URL=http://127.0.0.1:8787"
+      ]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Curator: Proxy + Chrome",
+      "configurations": [
+        "Curator Proxy Server",
+        "Flutter: Chrome"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "Curator: Proxy + macOS",
+      "configurations": [
+        "Curator Proxy Server",
+        "Flutter: macOS"
+      ],
+      "stopAll": true
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# Local secrets. Keep only redacted templates in source control.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Recoverable document deletions and interrupted uploads are private runtime data.
+/assets/.document_trash/
+/assets/images/.upload-*
+
+# Public sample allowlist. New documents, generated user manifests, and exports
+# remain local unless individually reviewed and explicitly added here.
+/assets/images/*
+/assets/items/*
+!/assets/images/new.jpg
+!/assets/images/media_1787068853075.jpg
+!/assets/items/manifest_new.json
+!/assets/items/manifest_media_1787068853075.json
+!/assets/items/canvas_new.png
+!/assets/items/canvas_media_1787068853075.png
+!/assets/items/item_backpack.png
+!/assets/items/item_caddy.png
+!/assets/items/item_colored_pencils.png
+!/assets/items/item_construction_paper.png
+!/assets/items/item_crayons.png
+!/assets/items/item_erasers.png
+!/assets/items/item_flashcards_add.png
+!/assets/items/item_flashcards_sub.png
+!/assets/items/item_folder_paper.png
+!/assets/items/item_folders.png
+!/assets/items/item_glue.png
+!/assets/items/item_hand_sanitizer.png
+!/assets/items/item_hand_soap.png
+!/assets/items/item_headphones.png
+!/assets/items/item_notebook.png
+!/assets/items/item_pencil_box.png
+!/assets/items/item_pencils.png
+!/assets/items/item_scissors.png
+!/assets/items/item_sharpener.png
+!/assets/items/item_sharpie.png
+!/assets/items/item_super_tips.png
+!/assets/items/item_tissue.png
+!/assets/items/item_watercolor.png
+!/assets/items/item_whiteboard_markers.png
+!/assets/items/item_wipes.png
+/shopitem_curator_map.html
+/.agents/
+/.codex/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
