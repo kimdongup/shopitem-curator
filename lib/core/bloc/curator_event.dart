@@ -1,12 +1,42 @@
 // Pure Dart BLoC Events (Zero Flutter Dependencies)
-
+import '../models/matching_options.dart';
 import 'dart:typed_data';
-
 import '../contracts/user_visible_failure.dart';
 import 'curator_state.dart';
 
+final class SetMatchingStrategyEvent extends CuratorEvent {
+  const SetMatchingStrategyEvent(this.strategy, this.enabled);
+  final MatchingStrategy strategy;
+  final bool enabled;
+}
+
+final class RefreshMatchingCapabilitiesEvent extends CuratorEvent {
+  const RefreshMatchingCapabilitiesEvent();
+}
+
+final class RunMatchingEvent extends CuratorEvent {
+  const RunMatchingEvent();
+}
+
 sealed class CuratorEvent {
   const CuratorEvent();
+}
+
+final class SetBrowserModeEvent extends CuratorEvent {
+  const SetBrowserModeEvent(this.enabled);
+  final bool enabled;
+}
+
+final class PairBrowserEvent extends CuratorEvent {
+  const PairBrowserEvent();
+}
+
+final class RefreshBrowserEvent extends CuratorEvent {
+  const RefreshBrowserEvent();
+}
+
+final class ApplyBrowserSelectionEvent extends CuratorEvent {
+  const ApplyBrowserSelectionEvent();
 }
 
 final class LoadSourceDocumentsEvent extends CuratorEvent {

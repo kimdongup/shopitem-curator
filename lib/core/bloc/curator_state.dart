@@ -1,6 +1,8 @@
 // Pure Dart BLoC States (Zero Flutter Dependencies)
 
 import '../models/curator_item.dart';
+import '../models/browser_project.dart';
+import '../models/matching_options.dart';
 import 'dart:typed_data';
 
 const defaultCuratorSourceImages = <String>[
@@ -19,9 +21,9 @@ enum CuratorStep {
     subtitle: '준비물 목록이 적힌 사진을 선택하고 텍스트를 추출합니다.',
   ),
   scrappingConfirmation(
-    title: '2. 스크래핑 확인 (Scrapping Confirmation)',
-    shortTitle: '스크래핑 확인',
-    subtitle: 'Target에서 수집된 상품 사진(누끼/배경 제거)과 가격/정보를 검수하고 OK 또는 재검토를 진행합니다.',
+    title: '2. 상품 선택 및 확인',
+    shortTitle: '상품 선택',
+    subtitle: 'Target에서 고른 상품 사진과 구매 링크를 확인하고 캔버스에 적용합니다.',
   ),
   hoveringImage(
     title: '3. 캔버스 시각화 (Hovering Image)',
@@ -121,10 +123,28 @@ final class CuratorLoadedState extends CuratorState {
     this.sourceImageBytes,
     this.documentOperationInProgress = false,
     this.documentErrorMessage,
-  })  : availableSourceImages = List.unmodifiable(availableSourceImages),
+    this.browserProject,
+    this.browserPairingCode,
+    this.browserMessage,
+    this.browserBusy = false,
+    MatchingOptions? matchingOptions,
+    List<MatchingCapability> matchingCapabilities = const [],
+    this.matchingStatus = '',
+  })  : matchingOptions = matchingOptions ?? MatchingOptions(),
+        matchingCapabilities = List.unmodifiable(matchingCapabilities),
+        availableSourceImages = List.unmodifiable(availableSourceImages),
         detectedCandidates = List.unmodifiable(detectedCandidates);
 
   final CuratorManifest manifest;
+  final MatchingOptions matchingOptions;
+  final List<MatchingCapability> matchingCapabilities;
+  final String matchingStatus;
+  final BrowserProject? browserProject;
+  final String? browserPairingCode;
+  final String? browserMessage;
+  final bool browserBusy;
+  bool get hasChecklist =>
+      allItems.isNotEmpty || (browserProject?.entries.isNotEmpty ?? false);
   final CuratorStep currentStep;
   final List<String> availableSourceImages;
   final String selectedSourceImage;
@@ -205,9 +225,26 @@ final class CuratorLoadedState extends CuratorState {
     Uint8List? sourceImageBytes,
     bool? documentOperationInProgress,
     String? Function()? documentErrorMessage,
+    BrowserProject? browserProject,
+    String? Function()? browserPairingCode,
+    String? Function()? browserMessage,
+    bool? browserBusy,
+    MatchingOptions? matchingOptions,
+    List<MatchingCapability>? matchingCapabilities,
+    String? matchingStatus,
   }) {
     return CuratorLoadedState(
+      matchingOptions: matchingOptions ?? this.matchingOptions,
+      matchingCapabilities: matchingCapabilities ?? this.matchingCapabilities,
+      matchingStatus: matchingStatus ?? this.matchingStatus,
       manifest: manifest ?? this.manifest,
+      browserProject: browserProject ?? this.browserProject,
+      browserPairingCode: browserPairingCode != null
+          ? browserPairingCode()
+          : this.browserPairingCode,
+      browserMessage:
+          browserMessage != null ? browserMessage() : this.browserMessage,
+      browserBusy: browserBusy ?? this.browserBusy,
       currentStep: currentStep ?? this.currentStep,
       availableSourceImages:
           availableSourceImages ?? this.availableSourceImages,

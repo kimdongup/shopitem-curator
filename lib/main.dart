@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'core/contracts/matching_strategy_provider.dart';
+import 'ui/adapters/html_file_saver.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'core/bloc/curator_bloc.dart';
@@ -80,8 +82,9 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   final httpClient = http.Client();
+  final backendUri = resolveBackendBaseUri();
   final backendGateway = BackendProxyGateway(
-    backendBaseUrl: resolveBackendBaseUri().toString(),
+    backendBaseUrl: backendUri.toString(),
     httpClient: httpClient,
   );
   final resourceLoader = FlutterBinaryResourceLoader(
@@ -103,7 +106,23 @@ void main() {
     manifestRebuilder: pipelineService,
     productReviewGateway: backendGateway,
     catalogRescraper: backendGateway,
+    matchingStrategyProvider: CallbackMatchingStrategyProvider(
+      loadCapabilities: backendGateway.matchingCapabilities,
+      createServices: (options) {
+        final gateway = backendGateway.withMatchingOptions(options);
+        return MatchingServices(
+            pipeline: CurationPipelineService(
+                ocrService: gateway,
+                targetFetcherService: gateway,
+                resourceLoader: resourceLoader),
+            review: gateway,
+            rescraper: gateway);
+      },
+    ),
     documentRepository: backendGateway,
+    browserProjectGateway:
+        _isLoopbackHost(backendUri.host) ? backendGateway : null,
+    startInBrowserMode: _isLoopbackHost(backendUri.host),
     onDispose: () {
       backendGateway.close();
       httpClient.close();
@@ -141,6 +160,7 @@ class ShopItemCuratorApp extends StatefulWidget {
     super.key,
     required this.curatorBloc,
     this.htmlExportService = const HtmlExportService(),
+    this.htmlFileSaver = saveHtmlFile,
     this.catalogProxyEnabled = true,
     this.onShutdown,
     this.onRetryInitialization,
@@ -148,6 +168,7 @@ class ShopItemCuratorApp extends StatefulWidget {
 
   final CuratorBloc curatorBloc;
   final HtmlExportService htmlExportService;
+  final HtmlFileSaver htmlFileSaver;
   final bool catalogProxyEnabled;
   final VoidCallback? onShutdown;
   final VoidCallback? onRetryInitialization;
@@ -181,6 +202,7 @@ class _ShopItemCuratorAppState extends State<ShopItemCuratorApp> {
       home: CuratorScreen(
         bloc: widget.curatorBloc,
         htmlExportService: widget.htmlExportService,
+        htmlFileSaver: widget.htmlFileSaver,
         catalogProxyEnabled: widget.catalogProxyEnabled,
         onRetryInitialization: widget.onRetryInitialization,
       ),

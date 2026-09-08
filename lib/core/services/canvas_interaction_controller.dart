@@ -75,8 +75,7 @@ class CanvasInteractionController {
     _renderOrder = items.map((item) => item.id).toList();
   }
 
-  CanvasOffset dragOffset(String id) =>
-      _dragOffsets[id] ?? CanvasOffset.zero;
+  CanvasOffset dragOffset(String id) => _dragOffsets[id] ?? CanvasOffset.zero;
 
   double itemScale(String id) => _itemScales[id] ?? 1.0;
 
@@ -102,12 +101,10 @@ class CanvasInteractionController {
   }
 
   double maximumScaleFor(CuratorItem item) {
-    final widthScale = item.bounds.width <= 0
-        ? 2.5
-        : canvasWidth / item.bounds.width;
-    final heightScale = item.bounds.height <= 0
-        ? 2.5
-        : canvasHeight / item.bounds.height;
+    final widthScale =
+        item.bounds.width <= 0 ? 2.5 : canvasWidth / item.bounds.width;
+    final heightScale =
+        item.bounds.height <= 0 ? 2.5 : canvasHeight / item.bounds.height;
     return math.max(0.01, math.min(2.5, math.min(widthScale, heightScale)));
   }
 
@@ -154,6 +151,26 @@ class CanvasInteractionController {
       proposedOffset: dragOffset(item.id),
       scale: newScale,
     );
+    _hasCustomLayout = true;
+  }
+
+  /// Bottom-right handle: keep the top-left anchored and preserve aspect ratio.
+  /// [delta] is expressed in canvas coordinates, not screen pixels.
+  void resizeFromCorner(CuratorItem item, CanvasOffset delta) {
+    final width = item.bounds.width, height = item.bounds.height;
+    if (width <= 0 || height <= 0 || !delta.dx.isFinite || !delta.dy.isFinite) {
+      return;
+    }
+    final offset = dragOffset(item.id);
+    final left = item.bounds.x + offset.dx, top = item.bounds.y + offset.dy;
+    final maxScale = math.min(maximumScaleFor(item),
+        math.min((canvasWidth - left) / width, (canvasHeight - top) / height));
+    if (maxScale <= 0) return;
+    final change = (delta.dx * width + delta.dy * height) /
+        (width * width + height * height);
+    _itemScales[item.id] = (itemScale(item.id) + change)
+        .clamp(math.min(0.4, maxScale), maxScale)
+        .toDouble();
     _hasCustomLayout = true;
   }
 

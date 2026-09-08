@@ -6,6 +6,10 @@ import 'dart:typed_data';
 import 'avif_image_decoder.dart';
 import 'tesseract_text_recognizer.dart';
 import 'file_source_document_repository.dart';
+import 'browser_project_store.dart';
+import 'matching_strategy_registry.dart';
+import 'package:shopitem_curator/core/models/matching_options.dart';
+import 'package:shopitem_curator/core/services/scraper/session/session_pool.dart';
 
 import 'package:shopitem_curator/core/contracts/source_document_repository.dart';
 import 'package:shopitem_curator/core/contracts/curator_use_cases.dart';
@@ -270,7 +274,11 @@ final class CuratorProxyServer {
     CuratorProxyImageFetcher? imageFetcher,
     AvifImageDecoder? avifDecoder,
     SourceDocumentRepository? documentRepository,
+    BrowserProjectStore? browserProjects,
+    MatchingStrategyRegistry? matchingStrategies,
   })  : _dependencies = dependencies,
+        _matchingStrategies = matchingStrategies,
+        _browserProjects = browserProjects,
         _documentRepository = documentRepository,
         _imageFetcher = imageFetcher ?? _DartIoTargetImageFetcher(),
         _avifDecoder = avifDecoder ?? AvifDecImageDecoder.fromEnvironment();
@@ -282,18 +290,28 @@ final class CuratorProxyServer {
       timeout: config.upstreamTimeout,
     );
     final ocrService = OcrExtractorService(recognizer: recognizer);
+    final strategies = MatchingStrategyRegistry.fromEnvironment();
     final targetService = TargetFetcherService(
+        sessionPool: SessionPool(
+            requestPolicy:
+                TargetRequestPolicy(accessState: strategies.accessState)),
         preferLiveCatalog: true,
         redSkyApiKey: Platform.environment['CURATOR_TARGET_REDSKY_KEY']);
     final rescraper = TargetCatalogRescraper(targetService);
+    final assets =
+        Directory(Platform.environment['CURATOR_ASSETS_DIR'] ?? 'assets');
+    final documents = FileSourceDocumentRepository(
+        assetsDirectory: assets, maxImageBytes: config.maxImageBytes);
 
     return CuratorProxyServer(
       config: config,
-      documentRepository: FileSourceDocumentRepository(
-        assetsDirectory:
-            Directory(Platform.environment['CURATOR_ASSETS_DIR'] ?? 'assets'),
-        maxImageBytes: config.maxImageBytes,
-      ),
+      matchingStrategies: strategies,
+      documentRepository: documents,
+      browserProjects: BrowserProjectStore(
+          directory: Directory('${assets.path}/.curator_projects'),
+          documents: documents,
+          extract: (path, bytes) =>
+              ocrService.extractItemsFromImage(path, imageBytes: bytes)),
       dependencies: CuratorProxyDependencies(
         checkOcrReady: recognizer.isAvailable,
         extractOcr: ({required sourceImagePath, required imageBytes}) =>
@@ -315,7 +333,9 @@ final class CuratorProxyServer {
 
   final CuratorProxyConfig config;
   final CuratorProxyDependencies _dependencies;
+  final MatchingStrategyRegistry? _matchingStrategies;
   final SourceDocumentRepository? _documentRepository;
+  final BrowserProjectStore? _browserProjects;
   final CuratorProxyImageFetcher _imageFetcher;
   final AvifImageDecoder _avifDecoder;
   final Map<String, _RateBucket> _rateBuckets = {};
@@ -378,6 +398,9 @@ final class CuratorProxyServer {
     }
     await closeResource(_imageFetcher.close);
     await closeResource(_avifDecoder.close);
+    if (_matchingStrategies != null) {
+      await closeResource(_matchingStrategies.close);
+    }
     final closeDependencies = _dependencies.close;
     if (closeDependencies != null) {
       await closeResource(closeDependencies);
@@ -393,6 +416,10 @@ final class CuratorProxyServer {
     try {
       _applySecurityHeaders(request.response);
       request.response.headers.set('X-Request-Id', requestId);
+      if (request.uri.path.startsWith('/v1/browser-bridge/')) {
+        await _handleBrowserBridge(request);
+        return;
+      }
       _applyCors(request);
 
       if (request.uri.path == _healthPath) {
@@ -440,7 +467,19 @@ final class CuratorProxyServer {
       _enforceRateLimit(request);
       _authenticate(request);
 
+      if (request.uri.path.startsWith('/v1/browser-projects/')) {
+        await _handleBrowserProjects(request);
+        return;
+      }
+
       switch (request.uri.path) {
+        case '/v1/catalog/strategies':
+          _requireMethod(request, 'GET');
+          final capabilities =
+              await _matchingStrategies?.capabilities() ?? const [];
+          _writeJson(request.response, 200,
+              {'strategies': capabilities.map((c) => c.toJson()).toList()});
+          return;
         case '/v1/documents':
         case '/v1/documents/read':
           await _handleDocuments(request);
@@ -475,6 +514,10 @@ final class CuratorProxyServer {
             'Endpoint not found.',
           );
       }
+    } on MatchingStrategyException catch (error) {
+      _writeJsonError(
+          request.response, error.statusCode, error.message, requestId,
+          code: 'matching_strategy_unavailable');
     } on TargetLookupException catch (error) {
       _writeJsonError(
           request.response,
@@ -542,7 +585,12 @@ final class CuratorProxyServer {
       final body = await _readJsonObject(request);
       final path = _requiredString(body['source_image_path'],
           field: 'source_image_path', maxLength: 512);
-      await repository.deleteDocument(path);
+      if (_browserProjects case final projects?) {
+        await projects.deleteDocument(
+            path, () => repository.deleteDocument(path));
+      } else {
+        await repository.deleteDocument(path);
+      }
       _writeJson(request.response, 200, {'deleted': path});
     } else {
       _requireMethod(request, 'POST');
@@ -559,6 +607,109 @@ final class CuratorProxyServer {
       }
       final path = await repository.importDocument(filename, bytes);
       _writeJson(request.response, 201, {'source_image_path': path});
+    }
+  }
+
+  BrowserProjectStore get _projects =>
+      _browserProjects ??
+      (throw const _ProxyHttpException(
+          503, 'Browser projects are not configured.'));
+
+  Future<void> _handleBrowserProjects(HttpRequest request) async {
+    _requireMethod(request, 'POST');
+    final body = await _readJsonObject(request);
+    String field(String key) =>
+        _requiredString(body[key], field: key, maxLength: 512);
+    switch (request.uri.path) {
+      case '/v1/browser-projects/open':
+        final project = await _projects.open(field('source_image_path'));
+        _writeJson(request.response, 200, project.toJson());
+      case '/v1/browser-projects/read':
+        _writeJson(request.response, 200,
+            (await _projects.read(field('project_id'))).toJson());
+      case '/v1/browser-projects/pair':
+        _writeJson(request.response, 200, {
+          'code': await _projects.createCode(field('project_id')),
+          'expires_in': 120
+        });
+      case '/v1/browser-projects/image':
+        final bytes = await _projects.image(
+            field('project_id'), field('item_id'), field('image_version'));
+        _writeJson(
+            request.response, 200, {'image_base64': base64Encode(bytes)});
+      default:
+        throw const _ProxyHttpException(
+            404, 'Browser project endpoint not found.');
+    }
+  }
+
+  Future<void> _handleBrowserBridge(HttpRequest request) async {
+    // MVP deliberately loopback-only. Do not expose pairing on a public bind.
+    final remote = request.connectionInfo?.remoteAddress;
+    if (!_isLoopbackAddress(config.bindAddress) ||
+        remote == null ||
+        !_isLoopbackAddress(remote)) {
+      throw const _ProxyHttpException(403, 'The browser bridge is local-only.');
+    }
+    final origin = request.headers.value('Origin');
+    final extensionPattern = RegExp(r'^chrome-extension://([a-p]{32})$');
+    final originMatch =
+        origin == null ? null : extensionPattern.firstMatch(origin);
+    if (origin != null && originMatch == null) {
+      throw const _ProxyHttpException(
+          403, 'Only a paired extension may use this endpoint.');
+    }
+    if (origin != null) {
+      request.response.headers
+        ..set('Access-Control-Allow-Origin', origin)
+        ..set('Vary', 'Origin');
+    }
+    _enforceRateLimit(request);
+    if (request.method == 'OPTIONS') {
+      if (originMatch == null) {
+        throw const _ProxyHttpException(403, 'Extension origin required.');
+      }
+      request.response.statusCode = 204;
+      request.response.headers
+        ..set('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        ..set('Access-Control-Allow-Headers',
+            'Authorization, Content-Type, X-Curator-Extension-Id');
+      return;
+    }
+    _requireMethod(request, 'POST');
+    final extensionId = request.headers.value('X-Curator-Extension-Id') ?? '';
+    if (!RegExp(r'^[a-p]{32}$').hasMatch(extensionId) ||
+        (originMatch != null && originMatch.group(1) != extensionId)) {
+      throw const _ProxyHttpException(403, 'Invalid extension identity.');
+    }
+    // Identity is not authentication: all operations require a one-use code
+    // or a high-entropy capability scoped to one project and this extension.
+    if (request.uri.path == '/v1/browser-bridge/pair') {
+      final body = await _readJsonObject(request);
+      final code = _requiredString(body['code'], field: 'code', maxLength: 32);
+      _writeJson(
+          request.response, 200, await _projects.pair(code, extensionId));
+      return;
+    }
+    final auth = request.headers.value('Authorization') ?? '';
+    final token = auth.startsWith('Bearer ') ? auth.substring(7) : '';
+    final projectId = _projects.authorize(token, extensionId);
+    switch (request.uri.path) {
+      case '/v1/browser-bridge/disconnect':
+        _projects.disconnect(token, extensionId);
+        _writeJson(request.response, 200, {'disconnected': true});
+      case '/v1/browser-bridge/read':
+        _writeJson(
+            request.response, 200, (await _projects.read(projectId)).toJson());
+      case '/v1/browser-bridge/select':
+        _writeJson(
+            request.response,
+            200,
+            (await _projects.update(projectId, await _readJsonObject(request)))
+                .toJson());
+      default:
+        throw const _ProxyHttpException(
+            404, 'Browser bridge endpoint not found.');
     }
   }
 
@@ -627,11 +778,12 @@ final class CuratorProxyServer {
   Future<void> _handleProducts(HttpRequest request) async {
     final body = await _readJsonObject(request);
     final items = _parseOcrItems(body['items']);
+    final strategy = await _matchingService(body, itemCount: items.length);
 
     late final List<TargetProductData> products;
     try {
-      products = await _dependencies
-          .fetchProducts(items)
+      products = await (strategy?.fetchTargetProducts(items) ??
+              _dependencies.fetchProducts(items))
           .timeout(config.upstreamTimeout);
     } on TargetLookupException {
       rethrow;
@@ -652,11 +804,12 @@ final class CuratorProxyServer {
   Future<void> _handleCandidates(HttpRequest request) async {
     final body = await _readJsonObject(request);
     final item = _parseCuratorItem(body['item']);
+    final strategy = await _matchingService(body);
 
     late final List<TargetProductCandidate> candidates;
     try {
-      candidates = await _dependencies
-          .fetchCandidates(item)
+      candidates = await (strategy?.fetchLiveCandidates(item) ??
+              _dependencies.fetchCandidates(item))
           .timeout(config.upstreamTimeout);
     } on TargetLookupException {
       rethrow;
@@ -676,6 +829,7 @@ final class CuratorProxyServer {
 
   Future<void> _handleInspect(HttpRequest request) async {
     final body = await _readJsonObject(request);
+    final strategy = await _matchingService(body);
     final url = _requiredString(
       body['url'],
       field: 'url',
@@ -690,8 +844,8 @@ final class CuratorProxyServer {
 
     late final TargetProductCandidate? candidate;
     try {
-      candidate = await _dependencies
-          .inspectProduct(url)
+      candidate = await (strategy?.fetchProductByTargetUrl(url) ??
+              _dependencies.inspectProduct(url))
           .timeout(config.upstreamTimeout);
     } on TargetLookupException {
       rethrow;
@@ -725,12 +879,16 @@ final class CuratorProxyServer {
       );
     }
     final items = rawItems.map(_parseCuratorItem).toList(growable: false);
+    final strategy = await _matchingService(body, itemCount: items.length);
 
     late final CatalogRescrapeResult result;
     try {
-      result = await _dependencies.rescrape(items).timeout(
-            config.upstreamTimeout,
-          );
+      result = await (strategy == null
+              ? _dependencies.rescrape(items)
+              : TargetCatalogRescraper(strategy).rescrapeAll(items: items))
+          .timeout(
+        config.upstreamTimeout,
+      );
     } on TargetLookupException {
       rethrow;
     } on TimeoutException {
@@ -756,6 +914,28 @@ final class CuratorProxyServer {
       'successful_item_count': result.successfulItemCount,
       'failed_item_count': result.failedItemCount,
     });
+  }
+
+  Future<TargetFetcherService?> _matchingService(Map<String, dynamic> body,
+      {int itemCount = 1}) async {
+    late final MatchingOptions options;
+    try {
+      options = MatchingOptions.fromJson(body['matching_options']);
+    } on FormatException {
+      throw const MatchingStrategyException(
+          400, 'Invalid matching strategy selection.');
+    }
+    if (options.isDefault) return null;
+    if (itemCount > 1) {
+      throw const MatchingStrategyException(
+          400, 'Selected strategies require one item per request.');
+    }
+    final registry = _matchingStrategies;
+    if (registry == null) {
+      throw const MatchingStrategyException(
+          503, 'Matching strategies are not configured.');
+    }
+    return registry.service(options.toJson());
   }
 
   Future<void> _handleImage(HttpRequest request) async {

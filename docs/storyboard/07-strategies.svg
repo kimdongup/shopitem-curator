@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="660" viewBox="0 0 1024 660" role="img" aria-labelledby="title desc">
+<title id="title">자동 매칭 전략을 선택하고 실행</title>
+<desc id="desc">앱 1단계에서 문서 선택, 자동 조회 전략 체크, 실행, 결과 확인 또는 확장 프로그램으로 전환하는 설명용 도식.</desc>
+<g font-family="'Apple SD Gothic Neo','Noto Sans KR',Arial,sans-serif">
+<rect width="1024" height="660" rx="22" fill="#0c1722"/>
+<rect x="36" y="26" width="61" height="42" rx="12" fill="#0b766b"/>
+<text x="50" y="54" font-size="18" fill="#fff">07</text>
+<text x="117" y="54" font-size="28" fill="#f2f7fc">자동 조회도, 직접 고르기도</text>
+<text x="118" y="86" font-size="18" fill="#aec4d3">전략 선택 예시 · 실제 성공률을 나타내는 그림이 아닙니다</text>
+<rect x="36" y="108" width="560" height="482" rx="16" fill="#1c2c3b"/>
+<text x="60" y="149" font-size="21" fill="#7ce7cc">1. 문서 입력 → 자동 조회 · 전략 선택</text>
+<rect x="60" y="166" width="511" height="43" rx="9" fill="#2c4153"/>
+<text x="78" y="195" font-size="20" fill="#fff">weekend-list.png</text>
+<g font-size="19" fill="#eaf4fb">
+<text x="64" y="244">☑ 1. 요청 헤더 프로필 교체</text>
+<text x="64" y="282" fill="#90a4b4">☐ 2. 서버 프록시 풀 — 서버 설정 필요</text>
+<text x="64" y="320">☑ 3a. 랜덤 요청 간격</text>
+<text x="64" y="358">☐ 3b. 브라우저 이동·스크롤</text>
+<text x="64" y="396">☐ 4. webdriver 표시 숨김 (실험)</text>
+<text x="64" y="434">☐ 5. 페이지의 상품 JSON 응답 관찰</text>
+</g>
+<text x="64" y="475" font-size="16" fill="#aec4d3">체크만으로는 요청하지 않습니다.</text>
+<rect x="62" y="503" width="231" height="52" rx="12" fill="#0b766b"/>
+<text x="83" y="537" font-size="23" fill="#fff">▶ 자동 매칭 실행</text>
+<text x="318" y="537" font-size="17" fill="#7ce7cc">전략 상태 새로고침</text>
+<path d="M607 333 H644" stroke="#69e3c5" stroke-width="3"/><path d="m635 325 10 8-10 8" fill="none" stroke="#69e3c5" stroke-width="3"/>
+<rect x="657" y="160" width="331" height="180" rx="16" fill="#1c2c3b"/>
+<text x="681" y="198" font-size="23" fill="#f2f7fc">결과를 확인합니다</text>
+<text x="681" y="240" font-size="18" fill="#aec4d3">실행 설정 · 전체 처리 시간</text>
+<text x="681" y="272" font-size="18" fill="#aec4d3">구매 링크 · 이미지 · 가격</text>
+<text x="681" y="309" font-size="17" fill="#7ce7cc">2단계 확인 → 3단계 캔버스</text>
+<rect x="657" y="369" width="331" height="184" rx="16" fill="#352a2b"/>
+<text x="681" y="409" font-size="23" fill="#ffccac">차단 / 데이터 없음</text>
+<text x="681" y="448" font-size="18" fill="#f2d8c9">브라우저에서 직접 선택</text>
+<text x="681" y="480" font-size="18" fill="#f2d8c9">→ 이동식 Curator 버튼으로</text>
+<text x="681" y="512" font-size="18" fill="#f2d8c9">마음에 드는 상품을 담습니다.</text>
+<text x="38" y="631" font-size="16" fill="#aec4d3">접근 허용 보장 없음 · 프록시 자동 구매 없음 · 401/403 중지 및 Retry-After 유지</text>
+</g></svg>

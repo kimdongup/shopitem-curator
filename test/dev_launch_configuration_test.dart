@@ -48,5 +48,7 @@ void main() {
     expect(flutterWrapper, contains('-u CURATOR_PROXY_TOKEN'));
     expect(flutterWrapper, contains('-u CURATOR_TARGET_REDSKY_KEY'));
     expect(runner, contains('-u CURATOR_TARGET_REDSKY_KEY'));
+    expect(flutterWrapper, contains('-u CURATOR_MATCHING_PROXY_POOL'));
+    expect(runner, contains('-u CURATOR_MATCHING_PROXY_POOL'));
   });
 }

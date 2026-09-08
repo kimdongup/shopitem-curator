@@ -45,7 +45,9 @@ class ScraperSession {
 /// Legacy session bookkeeping; request denials are handled by [requests].
 /// Replacing bookkeeping entries never resets host denials or changes headers.
 class SessionPool {
-  SessionPool({int maxPoolSize = 8}) : _maxPoolSize = maxPoolSize {
+  SessionPool({int maxPoolSize = 8, TargetRequestPolicy? requestPolicy})
+      : _maxPoolSize = maxPoolSize,
+        requests = requestPolicy ?? TargetRequestPolicy() {
     if (maxPoolSize < 1) {
       throw ArgumentError.value(maxPoolSize, 'maxPoolSize', 'must be positive');
     }
@@ -53,7 +55,7 @@ class SessionPool {
   }
 
   final int _maxPoolSize;
-  final TargetRequestPolicy requests = TargetRequestPolicy();
+  final TargetRequestPolicy requests;
   final List<ScraperSession> _sessions = [];
   int _currentIndex = 0;
   int _replacementCount = 0;

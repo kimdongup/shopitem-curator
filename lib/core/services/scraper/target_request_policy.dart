@@ -42,16 +42,33 @@ final class TargetLookupException implements Exception {
   String toString() => message;
 }
 
-/// One policy per catalog service, shared by search, PDP and review requests.
-/// A 401/403 stops further requests to that host for this service lifetime.
-/// Never rotates identities, retries denied requests or solves challenges.
+/// Shared by all catalog strategies, including the default HTTP service.
+/// A 401/403 stops further requests to that host for the server lifetime.
+/// Switching an explicit header/proxy option never resets this state.
+final class TargetAccessState {
+  final Set<String> deniedHosts = {};
+  final Set<String> rateLimitedHosts = {};
+  final Map<String, DateTime> retryAt = {};
+}
+
 final class TargetRequestPolicy {
-  TargetRequestPolicy({DateTime Function()? now}) : _now = now ?? DateTime.now;
+  TargetRequestPolicy(
+      {DateTime Function()? now,
+      TargetAccessState? accessState,
+      this.beforeRequest,
+      this.headersFor,
+      this.transportTimeout})
+      : _now = now ?? DateTime.now,
+        _access = accessState ?? TargetAccessState();
 
   final DateTime Function() _now;
-  final Set<String> _deniedHosts = {};
-  final Set<String> _rateLimitedHosts = {};
-  final Map<String, DateTime> _retryAt = {};
+  final TargetAccessState _access;
+  final Future<void> Function()? beforeRequest;
+  final Map<String, String> Function(Uri)? headersFor;
+  final Duration? transportTimeout;
+  Set<String> get _deniedHosts => _access.deniedHosts;
+  Set<String> get _rateLimitedHosts => _access.rateLimitedHosts;
+  Map<String, DateTime> get _retryAt => _access.retryAt;
 
   static const headers = {
     'User-Agent': 'ShopItemCurator/1.0',
@@ -63,6 +80,26 @@ final class TargetRequestPolicy {
 
   Future<http.Response> get(http.Client client, Uri uri,
       {Duration timeout = const Duration(seconds: 5)}) async {
+    _checkAccess(uri);
+    await beforeRequest?.call();
+    // Another queued request may have received a denial while this one waited.
+    _checkAccess(uri);
+    late final http.Response response;
+    try {
+      response = await client
+          .get(uri, headers: headersFor?.call(uri) ?? headers)
+          .timeout(transportTimeout ?? timeout);
+    } on TimeoutException {
+      throw const TargetLookupException(TargetLookupFailure.timeout);
+    } on TargetLookupException {
+      rethrow;
+    } on Exception {
+      throw const TargetLookupException(TargetLookupFailure.upstreamFailure);
+    }
+    return inspectResponse(uri, response);
+  }
+
+  void _checkAccess(Uri uri) {
     if (_deniedHosts.contains(uri.host)) {
       throw const TargetLookupException(TargetLookupFailure.accessDenied);
     }
@@ -71,14 +108,10 @@ final class TargetRequestPolicy {
         (retryAt != null && _now().isBefore(retryAt))) {
       throw const TargetLookupException(TargetLookupFailure.rateLimited);
     }
-    late final http.Response response;
-    try {
-      response = await client.get(uri, headers: headers).timeout(timeout);
-    } on TimeoutException {
-      throw const TargetLookupException(TargetLookupFailure.timeout);
-    } on Exception {
-      throw const TargetLookupException(TargetLookupFailure.upstreamFailure);
-    }
+  }
+
+  /// Browser-observed denied responses use the same breaker as plain HTTP.
+  http.Response inspectResponse(Uri uri, http.Response response) {
     if (response.statusCode == 401 || response.statusCode == 403) {
       _deniedHosts.add(uri.host);
       throw const TargetLookupException(TargetLookupFailure.accessDenied);

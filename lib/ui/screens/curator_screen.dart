@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/matching_strategy_panel.dart';
+import '../adapters/html_file_saver.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/bloc/curator_bloc.dart';
@@ -12,6 +14,7 @@ import '../widgets/curator_canvas.dart';
 import '../widgets/product_image.dart';
 import '../widgets/review_modal.dart';
 import '../widgets/source_document_menu.dart';
+import '../widgets/browser_project_panel.dart';
 
 /// 3-Step Separated Curator Screen:
 /// 1. Document Input (문서 입력)
@@ -22,12 +25,14 @@ class CuratorScreen extends StatefulWidget {
     super.key,
     required this.bloc,
     this.htmlExportService = const HtmlExportService(),
+    this.htmlFileSaver = saveHtmlFile,
     this.catalogProxyEnabled = true,
     this.onRetryInitialization,
   });
 
   final CuratorBloc bloc;
   final HtmlExportService htmlExportService;
+  final HtmlFileSaver htmlFileSaver;
 
   /// Whether the authenticated backend catalog capability is available.
   ///
@@ -355,9 +360,13 @@ class _CuratorScreenState extends State<CuratorScreen> {
           return Expanded(
             child: InkWell(
               onTap: state.isRescraping ||
+                      state.browserBusy ||
                       state.documentOperationInProgress ||
                       (step != CuratorStep.documentInput &&
-                          state.allItems.isEmpty)
+                          (step == CuratorStep.scrappingConfirmation
+                              ? !state.hasChecklist
+                              : state.allItems.isEmpty &&
+                                  state.browserProject == null))
                   ? null
                   : () => bloc.add(ChangeStepEvent(step)),
               borderRadius: BorderRadius.circular(12),
@@ -516,6 +525,29 @@ class _CuratorScreenState extends State<CuratorScreen> {
         const SizedBox(height: 20),
 
         // File Selection Menu
+        if (bloc.canUseBrowserMode) ...[
+          Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                ChoiceChip(
+                    label: const Text('브라우저에서 직접 선택'),
+                    selected: bloc.browserMode,
+                    onSelected:
+                        state.isRescraping || state.documentOperationInProgress
+                            ? null
+                            : (_) => bloc.add(const SetBrowserModeEvent(true))),
+                ChoiceChip(
+                    label: const Text('자동 조회 · 전략 선택'),
+                    selected: !bloc.browserMode,
+                    onSelected: state.isRescraping ||
+                            state.documentOperationInProgress
+                        ? null
+                        : (_) => bloc.add(const SetBrowserModeEvent(false))),
+              ]),
+          const SizedBox(height: 12),
+        ],
         SourceDocumentMenu(
           documents: state.availableSourceImages,
           selected: state.selectedSourceImage,
@@ -527,6 +559,14 @@ class _CuratorScreenState extends State<CuratorScreen> {
           onDelete: (path) => bloc.add(DeleteSourceDocumentEvent(path)),
           onRefresh: () => bloc.add(const LoadSourceDocumentsEvent()),
         ),
+        if (!bloc.browserMode && bloc.canConfigureMatching) ...[
+          const SizedBox(height: 16),
+          MatchingStrategyPanel(bloc: bloc, state: state),
+        ],
+        if (bloc.browserMode && state.browserMessage != null) ...[
+          const SizedBox(height: 12),
+          Text(state.browserMessage!, textAlign: TextAlign.center),
+        ],
         if (state.documentErrorMessage case final String message) ...[
           const SizedBox(height: 12),
           Text(message,
@@ -583,7 +623,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
           ),
         const SizedBox(height: 16),
         Text(
-          '총 ${state.allItems.length}개의 준비물 품목이 식별되었습니다.',
+          '총 ${state.browserProject?.entries.length ?? state.allItems.length}개의 준비물 품목이 식별되었습니다.',
           style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -598,7 +638,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
             height: 48,
             child: ElevatedButton(
               onPressed:
-                  state.allItems.isEmpty || state.documentOperationInProgress
+                  !state.hasChecklist || state.documentOperationInProgress
                       ? null
                       : () => bloc.add(const NextStepEvent()),
               style: ElevatedButton.styleFrom(
@@ -609,7 +649,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
                     borderRadius: BorderRadius.circular(14)),
               ),
               child: const Text(
-                '목록화 및 스크래핑 확인 ➔',
+                '목록 확인 및 상품 선택 ➔',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
@@ -644,7 +684,13 @@ class _CuratorScreenState extends State<CuratorScreen> {
         ),
         const SizedBox(height: 16),
 
-        if (!widget.catalogProxyEnabled) ...[
+        if (state.browserProject != null)
+          BrowserProjectPanel(
+              state: state,
+              onPair: () => bloc.add(const PairBrowserEvent()),
+              onRefresh: () => bloc.add(const RefreshBrowserEvent()),
+              onApply: () => bloc.add(const ApplyBrowserSelectionEvent())),
+        if (!widget.catalogProxyEnabled && !bloc.browserMode) ...[
           Container(
             constraints: const BoxConstraints(maxWidth: 680),
             width: double.infinity,
@@ -780,7 +826,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
                       ? '백엔드를 통해 Target 상품 정보를 다시 수집합니다.'
                       : '백엔드 상품 조회 기능을 사용할 수 없습니다.',
                   child: OutlinedButton.icon(
-                    onPressed: widget.catalogProxyEnabled
+                    onPressed: widget.catalogProxyEnabled && !bloc.browserMode
                         ? () => bloc.add(const RescrapeAllEvent())
                         : null,
                     icon: const Icon(Icons.refresh, size: 14),
@@ -999,6 +1045,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: state.isRescraping ||
+                                  bloc.browserMode ||
                                   !widget.catalogProxyEnabled
                               ? null
                               : () =>
@@ -1055,7 +1102,8 @@ class _CuratorScreenState extends State<CuratorScreen> {
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
-              onPressed: state.isRescraping
+              key: const Key('open_canvas_button'),
+              onPressed: state.isRescraping || state.browserBusy
                   ? null
                   : () => bloc.add(const NextStepEvent()),
               style: ElevatedButton.styleFrom(
@@ -1164,7 +1212,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '아이템을 마우스로 드래그하여 옮길 수 있으며, 마우스 휠 또는 +/- 버튼으로 크기를 조절할 수 있습니다.',
+                  '상품을 드래그해 옮기세요. 상품을 선택한 뒤 오른쪽 아래 ↘ 화살표를 당기면 비율을 유지하며 확대·축소됩니다. 키보드 +/−도 사용할 수 있습니다.',
                   style: TextStyle(fontSize: 12, color: Colors.white70),
                 ),
               ),
@@ -1190,15 +1238,14 @@ class _CuratorScreenState extends State<CuratorScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
-              child: const Text('◀ 스크래핑 확인으로 돌아가기',
+              child: const Text('◀ 상품 선택으로 돌아가기',
                   style:
                       TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton.icon(
               key: const Key('html_export_button'),
-              onPressed: _isExporting
-                  ? null
-                  : () => _showHtmlExportDialog(context, state),
+              onPressed:
+                  _isExporting ? null : () => _downloadHtml(context, state),
               icon: _isExporting
                   ? const SizedBox(
                       width: 16,
@@ -1208,13 +1255,13 @@ class _CuratorScreenState extends State<CuratorScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.code, size: 18),
+                  : const Icon(Icons.download, size: 18),
               label: Text(
                 _isExporting
                     ? (_exportTotal == 0
                         ? 'HTML 준비 중...'
                         : '이미지 포함 중 $_exportCompleted/$_exportTotal')
-                    : 'HTML 이미지맵 출력 (Export) 🌐',
+                    : 'HTML 다운로드',
                 style:
                     const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
               ),
@@ -1234,7 +1281,7 @@ class _CuratorScreenState extends State<CuratorScreen> {
     );
   }
 
-  Future<void> _showHtmlExportDialog(
+  Future<void> _downloadHtml(
       BuildContext context, CuratorLoadedState state) async {
     if (_isExporting) return;
     setState(() {
@@ -1273,9 +1320,9 @@ class _CuratorScreenState extends State<CuratorScreen> {
                 ))
             .toList();
 
-    String htmlCode;
+    final filename = curatorHtmlFilename(state.selectedSourceImage);
     try {
-      htmlCode = await widget.htmlExportService.generate(
+      final htmlCode = await widget.htmlExportService.generate(
         canvasWidth: state.manifest.canvasWidth,
         canvasHeight: state.manifest.canvasHeight,
         items: rawExportData,
@@ -1287,202 +1334,21 @@ class _CuratorScreenState extends State<CuratorScreen> {
           });
         },
       );
-    } catch (error) {
       if (!mounted || !context.mounted) return;
-      setState(() => _isExporting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('HTML 내보내기에 실패했습니다: $error')),
-      );
-      return;
+      final saved =
+          await widget.htmlFileSaver(filename: filename, html: htmlCode);
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(saved ? 'HTML 파일을 내보냈습니다: $filename' : 'HTML 저장을 취소했습니다.')));
+    } catch (_) {
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('HTML 파일을 저장하지 못했습니다. 다운로드·저장 권한을 확인하고 다시 시도해 주세요.')));
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
     }
-
-    if (!mounted || !context.mounted) return;
-    setState(() => _isExporting = false);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => _HtmlExportModalDialog(htmlCode: htmlCode),
-    );
-  }
-}
-
-class _HtmlExportModalDialog extends StatefulWidget {
-  const _HtmlExportModalDialog({required this.htmlCode});
-  final String htmlCode;
-
-  @override
-  State<_HtmlExportModalDialog> createState() => _HtmlExportModalDialogState();
-}
-
-class _HtmlExportModalDialogState extends State<_HtmlExportModalDialog> {
-  static const _previewCharacterLimit = 16000;
-  bool _copied = false;
-  bool _copying = false;
-  String? _copyError;
-
-  Future<void> _copyToClipboard() async {
-    if (_copying) return;
-    setState(() {
-      _copying = true;
-      _copyError = null;
-    });
-    try {
-      await Clipboard.setData(ClipboardData(text: widget.htmlCode));
-      if (!mounted) return;
-      setState(() {
-        _copying = false;
-        _copied = true;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _copying = false;
-        _copied = false;
-        _copyError = '클립보드 복사에 실패했습니다: $error';
-      });
-      return;
-    }
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _copied = false);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(12),
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.accentCyan, width: 1.2),
-      ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 800, maxHeight: 620),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.html,
-                  color: AppColors.accentCyan,
-                  size: 28,
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    '인터랙티브 HTML 이미지맵 코드 출력',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white60),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '표준 <map>/<area> 태그와 흑백↔컬러 호버 전환, 말풍선 가격표, Target 직링크가 포함된 독립 실행형 HTML 코드입니다.',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.htmlCode.length > _previewCharacterLimit
-                  ? '앱 성능을 위해 앞 ${_previewCharacterLimit ~/ 1000}K자만 미리 표시합니다. 전체 ${(widget.htmlCode.length / (1024 * 1024)).toStringAsFixed(1)} MiB는 복사 버튼에 포함됩니다.'
-                  : '전체 ${widget.htmlCode.length}자를 표시합니다.',
-              style: const TextStyle(
-                fontSize: 11,
-                color: Color(0xFFFFD08A),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Code View Box
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF090D16),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    widget.htmlCode.length > _previewCharacterLimit
-                        ? '${widget.htmlCode.substring(0, _previewCharacterLimit)}\n\n… (미리보기 생략)'
-                        : widget.htmlCode,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11.5,
-                      color: Color(0xFF67E8F9),
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_copyError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _copyError!,
-                style: const TextStyle(fontSize: 11, color: Colors.redAccent),
-              ),
-            ],
-            const SizedBox(height: 18),
-
-            // Action Buttons
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 12),
-                  ),
-                  child: const Text('닫기'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _copying ? null : _copyToClipboard,
-                  icon: _copying
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(_copied ? Icons.check : Icons.copy, size: 16),
-                  label: Text(
-                    _copying
-                        ? '복사 중...'
-                        : (_copied ? '클립보드에 복사 완료! ✓' : 'HTML 전체 복사'),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        _copied ? Colors.green.shade700 : AppColors.accentCyan,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

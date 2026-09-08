@@ -46,8 +46,11 @@ class CurationPipelineService implements CurationPipeline, ManifestRebuilder {
 
     // Step 2: Fetch Target 1st item product photos and URLs
     onProgress?.call('2단계: Target 웹사이트 검색 ➔ 1위 상품 사진 및 가격 수집 중...', 0.50);
-    final targetProducts =
-        await targetFetcherService.fetchTargetProducts(extractedEntries);
+    final targetProducts = await targetFetcherService.fetchTargetProducts(
+        extractedEntries,
+        onProgress: (completed, total, entry) => onProgress?.call(
+            '2단계: 상품 확인 $completed/$total · ${entry.cleanName}',
+            0.50 + (total == 0 ? 0 : completed / total * 0.20)));
 
     // Step 3: Composite items into a single unified canvas layer
     onProgress?.call('3단계: 검색된 물품 사진들을 단일 캔버스 레이어로 자동 합성 중...', 0.75);

@@ -6,6 +6,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../contracts/backend_readiness_gateway.dart';
+import '../contracts/browser_project_gateway.dart';
+import '../models/browser_project.dart';
+import '../models/matching_options.dart';
 import '../contracts/catalog_gateways.dart';
 import '../contracts/curator_use_cases.dart';
 import '../contracts/user_visible_failure.dart';
@@ -64,6 +67,7 @@ final class BackendProxyException implements Exception, UserVisibleFailure {
 final class BackendProxyGateway
     implements
         BackendReadinessGateway,
+        BrowserProjectGateway,
         ItemExtractionGateway,
         TargetProductGateway,
         ProductReviewGateway,
@@ -76,7 +80,9 @@ final class BackendProxyGateway
     this.requestTimeout = const Duration(seconds: 60),
     this.maxJsonResponseBytes = 2 * 1024 * 1024,
     this.maxImageBytes = 8 * 1024 * 1024,
+    MatchingOptions? matchingOptions,
   })  : _backendBaseUri = _parseBackendBaseUrl(backendBaseUrl),
+        _matchingOptions = matchingOptions ?? MatchingOptions(),
         _authToken = _parseAuthToken(authToken),
         _client = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null {
@@ -103,6 +109,78 @@ final class BackendProxyGateway
     }
   }
 
+  @override
+  Future<BrowserProject> openBrowserProject(String sourceImagePath) async =>
+      BrowserProject.fromJson(await _jsonRequest('/v1/browser-projects/open',
+          body: {'source_image_path': sourceImagePath}));
+
+  @override
+  Future<BrowserProject> refreshBrowserProject(String projectId) async =>
+      BrowserProject.fromJson(await _jsonRequest('/v1/browser-projects/read',
+          body: {'project_id': projectId}));
+
+  @override
+  Future<String> pairBrowserProject(String projectId) async =>
+      (await _jsonRequest('/v1/browser-projects/pair',
+          body: {'project_id': projectId}))['code'] as String;
+
+  @override
+  Future<CuratorManifest> readBrowserSelection(BrowserProject project) async {
+    final items = <CuratorItem>[];
+    for (final entry in project.entries.where((e) => e.status == 'selected')) {
+      if (!TargetPurchaseUrl.isValid(entry.targetUrl)) {
+        throw _invalidResponse(
+            '/v1/browser-projects/read', 'Invalid product URL.');
+      }
+      final response = await _jsonRequest('/v1/browser-projects/image',
+          body: {
+            'project_id': project.id,
+            'item_id': entry.id,
+            'image_version': entry.imageVersion,
+          },
+          responseLimit: 3 * 1024 * 1024);
+      final encoded = response['image_base64'] as String;
+      final bytes = base64Decode(encoded);
+      if (bytes.length > 2 * 1024 * 1024 ||
+          bytes.length < 8 ||
+          bytes[0] != 137 ||
+          bytes[1] != 80 ||
+          bytes[2] != 78 ||
+          bytes[3] != 71) {
+        throw _invalidResponse(
+            '/v1/browser-projects/image', 'Invalid PNG crop.');
+      }
+      items.add(CuratorItem(
+          id: entry.id,
+          name: entry.name,
+          category: 'Browser selection',
+          isPersonal: entry.isPersonal,
+          quantity: entry.quantity,
+          price: entry.price,
+          priceCurrency: 'USD',
+          description: '사용자가 Target 페이지에서 직접 선택한 이미지 · 가격 재확인 필요',
+          targetUrl: entry.targetUrl,
+          imageUrl: 'data:image/png;base64,$encoded',
+          bounds: const ItemLayoutBounds(x: 0, y: 0, width: 200, height: 200),
+          polygon: const [],
+          centroid: const CuratorPoint(100, 100),
+          isPreciselySegmented: false));
+    }
+    // A later selection must never silently overwrite a newer snapshot.
+    final latest = await refreshBrowserProject(project.id);
+    if (latest.revision != project.revision) {
+      throw const BackendProxyException(
+          kind: BackendProxyFailureKind.invalidResponse,
+          endpoint: '/v1/browser-projects/read',
+          message: '선택 내용이 변경되었습니다. 새로고침 후 다시 적용해 주세요.');
+    }
+    return CuratorManifest(
+        sourceImage: project.sourceImagePath,
+        canvasWidth: 1200,
+        canvasHeight: 820,
+        items: items);
+  }
+
   static const _ocrEndpoint = '/v1/ocr/extract';
   static const _readinessEndpoint = '/ready';
   static const _productsEndpoint = '/v1/catalog/products';
@@ -115,6 +193,24 @@ final class BackendProxyGateway
   final String? _authToken;
   final http.Client _client;
   final bool _ownsHttpClient;
+  final MatchingOptions _matchingOptions;
+
+  /// Immutable per-workflow adapter: changing UI flags cannot mutate requests
+  /// already executing for another document or another browser tab.
+  BackendProxyGateway withMatchingOptions(MatchingOptions options) =>
+      BackendProxyGateway(
+          backendBaseUrl: _backendBaseUri.toString(),
+          authToken: _authToken,
+          httpClient: _client,
+          requestTimeout: requestTimeout,
+          maxJsonResponseBytes: maxJsonResponseBytes,
+          maxImageBytes: maxImageBytes,
+          matchingOptions: options);
+
+  Future<List<MatchingCapability>> matchingCapabilities() async {
+    final json = await _jsonRequest('/v1/catalog/strategies', method: 'GET');
+    return MatchingCapability.parse(json['strategies']);
+  }
 
   final Duration requestTimeout;
   final int maxJsonResponseBytes;
@@ -446,6 +542,25 @@ final class BackendProxyGateway
         onProgress,
   }) async {
     if (entries.isEmpty) return const [];
+    if (!_matchingOptions.isDefault && entries.length > 1) {
+      final products = <TargetProductData>[];
+      for (var i = 0; i < entries.length; i++) {
+        final product = (await fetchTargetProducts([entries[i]])).single;
+        products.add(TargetProductData(
+            id: 'item_${i + 1}',
+            name: product.name,
+            category: product.category,
+            isPersonal: product.isPersonal,
+            quantity: product.quantity,
+            price: product.price,
+            priceCurrency: product.priceCurrency,
+            description: product.description,
+            targetUrl: product.targetUrl,
+            imageUrl: product.imageUrl));
+        onProgress?.call(i + 1, entries.length, entries[i]);
+      }
+      return List.unmodifiable(products);
+    }
 
     final payload = await _postJson(
       _productsEndpoint,
@@ -565,6 +680,22 @@ final class BackendProxyGateway
           'Every item must have a unique non-empty id.',
         );
       }
+    }
+
+    if (!_matchingOptions.isDefault && items.length > 1) {
+      final combined = <CuratorItem>[];
+      var succeeded = 0, failed = 0;
+      for (var i = 0; i < items.length; i++) {
+        final result = await rescrapeAll(items: [items[i]]);
+        combined.addAll(result.items);
+        succeeded += result.successfulItemCount;
+        failed += result.failedItemCount;
+        onProgress?.call(i + 1, items.length, items[i]);
+      }
+      return CatalogRescrapeResult(
+          items: combined,
+          successfulItemCount: succeeded,
+          failedItemCount: failed);
     }
 
     final payload = await _postJson(
@@ -1244,7 +1375,14 @@ final class BackendProxyGateway
           'Content-Type': 'application/json; charset=utf-8',
           if (_authToken != null) 'Authorization': 'Bearer $_authToken',
         });
-      if (method != 'GET') request.body = jsonEncode(body);
+      if (method != 'GET') {
+        request.body = jsonEncode({
+          ...body,
+          if (endpoint.startsWith('/v1/catalog/') &&
+              !_matchingOptions.isDefault)
+            'matching_options': _matchingOptions.toJson(),
+        });
+      }
       response = await _client
           .send(request)
           .then(http.Response.fromStream)
@@ -1380,6 +1518,8 @@ final class BackendProxyGateway
       };
     }
     final message = switch ((metadata.code, statusCode, endpoint)) {
+      ('matching_strategy_unavailable', _, _) =>
+        '선택한 전략이 준비되지 않았거나 설정이 잘못되었습니다. 1단계의 전략 상태를 새로고침하고 서버 설정을 확인하세요.',
       ('target_access_denied', _, _) =>
         'Target이 접근을 거부했습니다. 승인된 상품 데이터 접근 권한을 확인하세요.',
       ('target_rate_limited', _, _) => 'Target 요청 한도에 도달했습니다. 잠시 후 다시 시도하세요.',
@@ -1730,6 +1870,7 @@ final class BackendProxyGateway
 enum _ReadinessAttemptSignal { ready, timedOut, cancelled }
 
 const _knownBackendErrorCodes = <String>{
+  'matching_strategy_unavailable',
   'target_access_denied',
   'target_rate_limited',
   'target_timeout',

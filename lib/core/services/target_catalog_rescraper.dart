@@ -50,15 +50,19 @@ final class TargetCatalogRescraper implements CatalogRescraper {
           await _targetFetcherService.resolveTargetProductPdpUrl(item.name);
       if (resolution == null) return _RefreshOutcome.failed(item);
 
-      final fallbackImageUrl = resolution.primaryGuestId == null
-          ? null
-          : 'https://target.scene7.com/is/image/Target/'
-              'GUEST_${resolution.primaryGuestId}'
-              '?wid=1200&hei=1200&qlt=85&fmt=pjpeg';
-      final liveImageUrl = await _targetFetcherService.adoptMainImageFromPdp(
-        resolution.pdpUrl,
-        fallbackImageUrl: fallbackImageUrl,
-      );
+      final fallbackImageUrl = resolution.primaryImageUrl ??
+          (resolution.primaryGuestId == null
+              ? null
+              : 'https://target.scene7.com/is/image/Target/'
+                  'GUEST_${resolution.primaryGuestId}'
+                  '?wid=1200&hei=1200&qlt=85&fmt=pjpeg');
+      final liveImageUrl = _targetFetcherService.preferObservedProducts &&
+              resolution.primaryImageUrl != null
+          ? resolution.primaryImageUrl
+          : await _targetFetcherService.adoptMainImageFromPdp(
+              resolution.pdpUrl,
+              fallbackImageUrl: fallbackImageUrl,
+            );
 
       // Metadata and imagery are adopted as one unit. A failed item is kept
       // intact and marked for review instead of aborting the whole batch.

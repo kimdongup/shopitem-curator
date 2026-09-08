@@ -11,6 +11,7 @@ import 'scraper/concurrency/concurrent_executor.dart';
 import 'scraper/router/image_adoption_handler.dart';
 import 'scraper/router/pdp_handler.dart';
 import 'scraper/router/search_handler.dart';
+import 'scraper/router/observed_product_parser.dart';
 import 'scraper/session/session_pool.dart';
 import 'scraper/target_request_policy.dart';
 
@@ -23,6 +24,7 @@ class TargetPdpResolutionResult {
     required this.pdpUrl,
     required this.price,
     this.primaryGuestId,
+    this.primaryImageUrl,
     this.description,
   });
 
@@ -30,6 +32,7 @@ class TargetPdpResolutionResult {
   final String pdpUrl;
   final double price;
   final String? primaryGuestId;
+  final String? primaryImageUrl;
   final String? description;
 }
 
@@ -41,6 +44,7 @@ class TargetFetcherService
   TargetFetcherService({
     http.Client? httpClient,
     this.preferLiveCatalog = false,
+    this.preferObservedProducts = false,
     String? redSkyApiKey,
     SessionPool? sessionPool,
     ConcurrentExecutor? concurrentExecutor,
@@ -63,6 +67,7 @@ class TargetFetcherService
   final Map<String, Future<TargetPdpResolutionResult?>> _pendingSearches = {};
   final bool _ownsHttpClient;
   final bool preferLiveCatalog;
+  final bool preferObservedProducts;
   final SessionPool _sessionPool;
   final ConcurrentExecutor _concurrentExecutor;
   final ScrapeCacheStore _cacheStore;
@@ -496,6 +501,7 @@ class TargetFetcherService
           pdpUrl: purchaseUrl.toString(),
           price: result.price,
           primaryGuestId: result.primaryGuestId,
+          primaryImageUrl: result.primaryImageUrl,
           description: result.description,
         );
         _cacheStore.set(key, _TargetSearchOutcome(result: res));
@@ -567,15 +573,19 @@ class TargetFetcherService
     }
 
     if (step1Result != null) {
-      final fallbackImg = step1Result.primaryGuestId != null
-          ? ImageAdoptionHandler.buildHighResUrl(
-              'https://target.scene7.com/is/image/Target/GUEST_${step1Result.primaryGuestId}')
-          : null;
+      final fallbackImg = step1Result.primaryImageUrl ??
+          (step1Result.primaryGuestId != null
+              ? ImageAdoptionHandler.buildHighResUrl(
+                  'https://target.scene7.com/is/image/Target/GUEST_${step1Result.primaryGuestId}')
+              : null);
 
       String? adoptedImage;
       try {
-        adoptedImage = await adoptMainImageFromPdp(step1Result.pdpUrl,
-            fallbackImageUrl: fallbackImg);
+        adoptedImage =
+            preferObservedProducts && step1Result.primaryImageUrl != null
+                ? step1Result.primaryImageUrl
+                : await adoptMainImageFromPdp(step1Result.pdpUrl,
+                    fallbackImageUrl: fallbackImg);
       } on TargetLookupException catch (error) {
         lookupFailure = error;
       }
@@ -719,6 +729,28 @@ class TargetFetcherService
     final candidates = <TargetProductCandidate>[];
     final query = item.name.trim();
     TargetLookupException? failure;
+
+    if (preferObservedProducts) {
+      final response = await _sessionPool.requests.get(
+          _client, Uri.https('www.target.com', '/s', {'searchTerm': query}));
+      final observed = ObservedProductMetadata.fromHtml(response.body)
+          .where((p) => SearchHandler.scoreSimilarity(query, p.name) > 0)
+          .toList()
+        ..sort((a, b) => SearchHandler.scoreSimilarity(query, b.name)
+            .compareTo(SearchHandler.scoreSimilarity(query, a.name)));
+      if (observed.isNotEmpty) {
+        return [
+          for (var i = 0; i < observed.length.clamp(0, 5); i++)
+            TargetProductCandidate(
+                id: 'observed_$i',
+                name: observed[i].name,
+                price: observed[i].price,
+                imageUrl: observed[i].imageUrl,
+                targetUrl: observed[i].targetUrl,
+                description: '페이지에서 관찰한 상품 JSON · 실시간 재고는 구매 전 확인')
+        ];
+      }
+    }
 
     // ── Tier 1: Target RedSky Web Search API ──────────────────────────────────
     if (_redSkyApiKey?.trim().isNotEmpty == true) {

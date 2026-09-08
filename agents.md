@@ -80,10 +80,19 @@ Flutter 앱은 외부 OCR 또는 Target 데이터 API를 직접 호출하지 않
 
 ## 📁 3. 디렉토리 구조 (Directory Structure)
 
+### 브라우저 선택 모드 (로컬 MVP)
+
+- 기본 로컬 조립은 `BrowserProjectGateway`를 BLoC에 주입합니다. OCR 목록을 만든 후 사용자의 상품 선택을 기다리며 Target 조회 포트를 호출하지 않습니다.
+- Chrome `extension/`은 Target 페이지 위의 이동식 위젯으로 일반 검색 페이지를 열고, 사용자 클릭으로 현재 PDP URL과 직접 선택한 PNG 영역만 로컬 백엔드에 전달합니다. 쿠키/세션/상품 DOM 수집은 하지 않습니다.
+- `BrowserProjectStore`는 파일별 목록·선택 결과를 `assets/.curator_projects/`에 저장합니다. 문서 삭제와 함께 해당 프로젝트·캡처도 보관 삭제하고 확장 연결 권한을 폐기합니다. 이 저장소는 공개 Git 및 Flutter 번들에 포함하지 않습니다.
+- `/v1/browser-projects/*`는 기존 앱 인증을 사용합니다. `/v1/browser-bridge/*`는 loopback 전용이며 2분 일회용 코드 → 8시간 프로젝트 한정 연결 권한으로 인증합니다. 다른 앱 라우트의 인증/CORS는 완화하지 않습니다.
+- 선택한 이미지는 `ManifestRebuilder`를 통해 기존 Pure Dart 합성·윤곽선 경로에 합류합니다. UI는 BLoC 이벤트/상태만 사용하며 Flutter 의존성을 Core에 추가하지 않습니다.
+- 원격 배포에서 확장 연결은 아직 지원하지 않습니다. 자동 모드는 유지하되 Target 접근 제한은 별도 문제로 명시합니다.
+
 ```text
 shopitem-curator/
 ├── agents.md                       # 요구사항 및 아키텍처 정의 (본 문서)
-├── usage.md                        # 사용법 및 배포 가이드
+├── USAGE.md                        # 사용법 및 배포 가이드
 ├── pubspec.yaml                    # Flutter & Dart 의존성 정의
 ├── assets/                         # 정적 자산
 │   ├── images/                     # 원본 입력 사진들 (new.jpg, media_1787068853075.jpg)

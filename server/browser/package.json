@@ -1,0 +1,8 @@
+{
+  "name": "curator-matching-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated optional browser transport for Curator matching",
+  "engines": { "node": ">=22" },
+  "dependencies": { "playwright-core": "1.63.0" }
+}

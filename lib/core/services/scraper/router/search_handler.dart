@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../../models/target_purchase_url.dart';
 import '../session/session_pool.dart';
 import '../target_request_policy.dart';
+import 'observed_product_parser.dart';
 
 class SearchResolutionResult {
   const SearchResolutionResult({
@@ -12,6 +13,7 @@ class SearchResolutionResult {
     required this.pdpUrl,
     required this.price,
     this.primaryGuestId,
+    this.primaryImageUrl,
     this.description,
   });
 
@@ -19,6 +21,7 @@ class SearchResolutionResult {
   final String pdpUrl;
   final double price;
   final String? primaryGuestId;
+  final String? primaryImageUrl;
   final String? description;
 }
 
@@ -179,6 +182,20 @@ class SearchHandler {
 
       if (resp.statusCode == 200) {
         final html = resp.body;
+        final observed = ObservedProductMetadata.fromHtml(html)
+            .where((p) => scoreSimilarity(query, p.name) > 0)
+            .toList()
+          ..sort((a, b) => scoreSimilarity(query, b.name)
+              .compareTo(scoreSimilarity(query, a.name)));
+        if (observed.isNotEmpty) {
+          final best = observed.first;
+          return SearchResolutionResult(
+              name: best.name,
+              pdpUrl: best.targetUrl,
+              price: best.price,
+              primaryImageUrl: best.imageUrl,
+              description: '페이지에서 관찰한 상품 JSON · 구매 전 가격/재고 재확인');
+        }
         final pdpUrlMatch = RegExp(
           r'href=["\x27](/p/[^"\x27]+/-/A-\d+[^"\x27]*)["\x27]',
           caseSensitive: false,

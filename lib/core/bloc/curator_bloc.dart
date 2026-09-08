@@ -4,6 +4,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../contracts/curator_use_cases.dart';
+import '../contracts/browser_project_gateway.dart';
+import '../contracts/matching_strategy_provider.dart';
+import '../models/matching_options.dart';
 import '../contracts/user_visible_failure.dart';
 import '../contracts/source_document_repository.dart';
 import '../models/curator_item.dart';
@@ -21,6 +24,10 @@ class CuratorBloc {
     required ProductReviewGateway productReviewGateway,
     required CatalogRescraper catalogRescraper,
     SourceDocumentRepository? documentRepository,
+    BrowserProjectGateway? browserProjectGateway,
+    MatchingStrategyProvider? matchingStrategyProvider,
+    bool startInBrowserMode = false,
+    this.browserPollInterval = const Duration(seconds: 6),
     void Function()? onDispose,
   })  : _repository = itemRepository,
         _pipelineService = pipelineService,
@@ -28,6 +35,9 @@ class CuratorBloc {
         _productReviewGateway = productReviewGateway,
         _catalogRescraper = catalogRescraper,
         _documentRepository = documentRepository,
+        _browserProjects = browserProjectGateway,
+        _matchingProvider = matchingStrategyProvider,
+        _browserMode = startInBrowserMode && browserProjectGateway != null,
         _onDispose = onDispose {
     if (documentRepository != null) _sourceImages = [];
     _eventSubscription = _eventController.stream.listen((event) {
@@ -41,6 +51,26 @@ class CuratorBloc {
   final ProductReviewGateway _productReviewGateway;
   final CatalogRescraper _catalogRescraper;
   final SourceDocumentRepository? _documentRepository;
+  final BrowserProjectGateway? _browserProjects;
+  final MatchingStrategyProvider? _matchingProvider;
+  MatchingOptions _matchingOptions = MatchingOptions();
+  List<MatchingCapability> _matchingCapabilities = const [];
+  String _matchingStatus = '';
+  bool _loadingMatchingCapabilities = false;
+  bool get canConfigureMatching => _matchingProvider != null;
+  MatchingServices get _matchingServices =>
+      _matchingProvider?.servicesFor(_matchingOptions) ??
+      MatchingServices(
+          pipeline: _pipelineService,
+          review: _productReviewGateway,
+          rescraper: _catalogRescraper);
+  final Duration browserPollInterval;
+  bool _browserMode;
+  bool get browserMode => _browserMode;
+  bool get canUseBrowserMode => _browserProjects != null;
+  Timer? _browserTimer;
+  bool _browserRefreshing = false;
+  int _browserSelectionRequestId = 0;
   List<String> _sourceImages = List.of(defaultCuratorSourceImages);
   bool _documentBusy = false;
   String? _lastSourceImage;
@@ -77,6 +107,12 @@ class CuratorBloc {
 
   void _emit(CuratorState newState) {
     if (_isDisposed) return;
+    if (newState is CuratorLoadedState) {
+      newState = newState.copyWith(
+          matchingOptions: _matchingOptions,
+          matchingCapabilities: _matchingCapabilities,
+          matchingStatus: _matchingStatus);
+    }
     _currentState = newState;
     if (!_stateController.isClosed) {
       _stateController.add(newState);
@@ -129,7 +165,64 @@ class CuratorBloc {
   Future<void> _handleEvent(CuratorEvent event) async {
     // A storage mutation cannot overlap selection, review, or another mutation.
     if (_documentBusy) return;
+    if (_browserMode &&
+        (event is RescrapeAllEvent ||
+            event is FetchLiveCandidatesEvent ||
+            event is InspectTargetUrlEvent ||
+            event is StartItemReviewEvent)) {
+      return;
+    }
     switch (event) {
+      case RefreshMatchingCapabilitiesEvent():
+        await _refreshMatchingCapabilities();
+      case SetMatchingStrategyEvent(:final strategy, :final enabled):
+        final state = _currentState;
+        if (_browserMode ||
+            state is! CuratorLoadedState ||
+            state.isRescraping ||
+            state.reviewStatus == ReviewStatus.loading ||
+            state.urlInspectionStatus == UrlInspectionStatus.loading ||
+            (enabled &&
+                !_matchingCapabilities
+                    .any((c) => c.strategy == strategy && c.available))) {
+          return;
+        }
+        _matchingOptions = _matchingOptions.toggle(strategy, enabled);
+        _emit(state);
+      case RunMatchingEvent():
+        final state = _currentState;
+        if (_browserMode ||
+            state is! CuratorLoadedState ||
+            state.isRescraping ||
+            state.reviewStatus == ReviewStatus.loading ||
+            state.urlInspectionStatus == UrlInspectionStatus.loading) {
+          return;
+        }
+        final path = _lastSourceImage;
+        if (path != null) {
+          await _selectSourceImage(path, _lastSourceBytes, runMatching: true);
+        }
+      case SetBrowserModeEvent(:final enabled):
+        if (_browserProjects == null ||
+            _browserMode == enabled ||
+            (_currentState is CuratorLoadedState &&
+                (_currentState as CuratorLoadedState).isRescraping)) {
+          return;
+        }
+        _browserMode = enabled;
+        _browserTimer?.cancel();
+        final path = _lastSourceImage;
+        if (path != null) {
+          await _selectSourceImage(path, _lastSourceBytes);
+        } else {
+          _emit(_emptyDocumentState());
+        }
+      case PairBrowserEvent():
+        await _pairBrowser();
+      case RefreshBrowserEvent():
+        await _refreshBrowser();
+      case ApplyBrowserSelectionEvent():
+        await _applyBrowserSelection();
       case LoadSourceDocumentsEvent(:final selectFirst):
         await _loadDocuments(selectFirst: selectFirst);
       case ImportSourceDocumentEvent(:final filename, :final bytes):
@@ -140,7 +233,7 @@ class CuratorBloc {
         final path = _lastSourceImage;
         if (path != null &&
             (_documentRepository == null || _sourceImages.contains(path))) {
-          await _selectSourceImage(path, _lastSourceBytes);
+          await _selectSourceImage(path, _lastSourceBytes, runMatching: true);
         }
       case SelectSourceImageEvent(:final sourceImagePath, :final imageBytes):
         await _selectSourceImage(sourceImagePath, imageBytes);
@@ -171,10 +264,16 @@ class CuratorBloc {
         }
 
       case ChangeStepEvent(:final targetStep):
+        if (_browserMode && targetStep == CuratorStep.hoveringImage) {
+          await _applyBrowserSelection(openCanvas: true);
+          return;
+        }
         final state = _currentState;
         if (state is CuratorLoadedState &&
             !state.isRescraping &&
             (targetStep == CuratorStep.documentInput ||
+                (targetStep == CuratorStep.scrappingConfirmation &&
+                    state.hasChecklist) ||
                 state.allItems.isNotEmpty)) {
           _invalidateReviewRequest();
           _emit(state.copyWith(
@@ -192,9 +291,17 @@ class CuratorBloc {
 
       case NextStepEvent():
         final state = _currentState;
+        if (_browserMode &&
+            state is CuratorLoadedState &&
+            state.currentStep == CuratorStep.scrappingConfirmation) {
+          await _applyBrowserSelection(openCanvas: true);
+          return;
+        }
         if (state is CuratorLoadedState &&
             !state.isRescraping &&
-            state.allItems.isNotEmpty) {
+            (state.allItems.isNotEmpty ||
+                (state.currentStep == CuratorStep.documentInput &&
+                    state.hasChecklist))) {
           _invalidateReviewRequest();
           final nextStep = switch (state.currentStep) {
             CuratorStep.documentInput => CuratorStep.scrappingConfirmation,
@@ -438,7 +545,8 @@ class CuratorBloc {
 
           var acceptsProgress = true;
           try {
-            final rescrapeResult = await _catalogRescraper.rescrapeAll(
+            final rescrapeResult =
+                await _matchingServices.rescraper.rescrapeAll(
               items: state.allItems,
               onProgress: (completed, total, item) {
                 if (!acceptsProgress || !_isCurrentRescrapeRequest(requestId)) {
@@ -567,6 +675,7 @@ class CuratorBloc {
       );
 
   void _invalidateDocumentWork() {
+    _browserTimer?.cancel();
     _pipelineRequestId++;
     _invalidateReviewRequest();
     _invalidateRescrapeRequest();
@@ -574,13 +683,15 @@ class CuratorBloc {
   }
 
   Future<void> _loadDocuments({required bool selectFirst}) async {
+    unawaited(_refreshMatchingCapabilities());
     final repository = _documentRepository;
     if (repository == null) return;
     _documentBusy = true;
     _invalidateDocumentWork();
     final previous = _currentState;
-    final base =
-        previous is CuratorLoadedState ? previous : _emptyDocumentState();
+    final base = previous is CuratorLoadedState
+        ? previous.copyWith(browserBusy: false)
+        : _emptyDocumentState();
     _emit(base.copyWith(
         documentOperationInProgress: true, documentErrorMessage: () => null));
     try {
@@ -604,6 +715,7 @@ class CuratorBloc {
       return;
     } finally {
       _documentBusy = false;
+      _scheduleBrowserRefresh();
     }
     if (selectFirst && !_isDisposed && _sourceImages.isNotEmpty) {
       final path = _sourceImages.contains('assets/images/new.jpg')
@@ -636,11 +748,13 @@ class CuratorBloc {
     } catch (error) {
       _emit(state.copyWith(
           documentOperationInProgress: false,
+          browserBusy: false,
           documentErrorMessage: () => _userVisibleFailureMessage(error,
               fallback: '문서를 추가하지 못했습니다. 다시 시도하세요.')));
       return;
     } finally {
       _documentBusy = false;
+      _scheduleBrowserRefresh();
     }
     if (!_isDisposed) await _selectSourceImage(path, bytes);
   }
@@ -672,22 +786,44 @@ class CuratorBloc {
         _emit(state.copyWith(
             availableSourceImages: _sourceImages,
             documentOperationInProgress: false,
+            browserBusy: false,
             documentErrorMessage: () => null));
       }
     } catch (error) {
       _emit(state.copyWith(
           documentOperationInProgress: false,
+          browserBusy: false,
           documentErrorMessage: () => _userVisibleFailureMessage(error,
               fallback: '문서 삭제에 실패했습니다. 목록을 새로고침한 뒤 다시 시도하세요.')));
     } finally {
       _documentBusy = false;
+      _scheduleBrowserRefresh();
     }
   }
 
-  Future<void> _selectSourceImage(String path, List<int>? imageBytes) async {
+  Future<void> _refreshMatchingCapabilities() async {
+    final provider = _matchingProvider;
+    if (provider == null || _loadingMatchingCapabilities || _isDisposed) return;
+    _loadingMatchingCapabilities = true;
+    try {
+      _matchingCapabilities = List.unmodifiable(await provider.capabilities());
+      _matchingStatus = '설정을 선택한 뒤 자동 매칭 실행을 누르세요. 선택하지 않으면 기본 HTTP 조회입니다.';
+    } catch (_) {
+      _matchingCapabilities = const [];
+      _matchingStatus = '전략 목록을 확인하지 못했습니다. 백엔드를 업데이트·재시작한 뒤 새로고침하세요.';
+    } finally {
+      _loadingMatchingCapabilities = false;
+      if (_currentState case final CuratorLoadedState state) _emit(state);
+    }
+  }
+
+  Future<void> _selectSourceImage(String path, List<int>? imageBytes,
+      {bool runMatching = false}) async {
     if (_documentRepository != null && !_sourceImages.contains(path)) return;
     _invalidateDocumentWork();
     final requestId = _pipelineRequestId;
+    final services = _matchingServices;
+    final options = _matchingOptions;
     _lastSourceImage = path;
     _lastSourceBytes = imageBytes;
     Uint8List? bytes;
@@ -703,7 +839,21 @@ class CuratorBloc {
         bytes = Uint8List.fromList(loaded).asUnmodifiableView();
         _lastSourceBytes = bytes;
       }
-      final manifest = await _pipelineService.runPipeline(
+      if (_browserMode && _browserProjects != null) {
+        final project = await _browserProjects.openBrowserProject(path);
+        if (!_isCurrentPipelineRequest(requestId)) return;
+        _emit(_emptyDocumentState(path: path, bytes: bytes)
+            .copyWith(browserProject: project));
+        if (project.selectedCount > 0) await _applyBrowserSelection();
+        _scheduleBrowserRefresh();
+        return;
+      }
+      if (_matchingProvider != null && !runMatching) {
+        _emit(_emptyDocumentState(path: path, bytes: bytes));
+        return;
+      }
+      final timer = Stopwatch()..start();
+      final manifest = await services.pipeline.runPipeline(
         sourceImagePath: path,
         imageBytes: bytes,
         onProgress: (description, progress) {
@@ -717,6 +867,11 @@ class CuratorBloc {
         },
       );
       if (!_isCurrentPipelineRequest(requestId)) return;
+      timer.stop();
+      final links = manifest.items.where((i) => i.targetUrl.isNotEmpty).length;
+      _matchingStatus =
+          '최근 실행 (${path.split('/').last}): ${options.isDefault ? '기본 HTTP' : options.enabled.map((s) => s.title).join(' + ')} · '
+          '${(timer.elapsedMilliseconds / 1000).toStringAsFixed(1)}초 (전체 파이프라인) · 구매 링크 $links/${manifest.items.length}개. 저장된 후보가 포함될 수 있습니다.';
       _emit(CuratorLoadedState(
           manifest: manifest,
           selectedSourceImage: path,
@@ -733,6 +888,177 @@ class CuratorBloc {
       } else {
         _emit(CuratorErrorState(message));
       }
+    }
+  }
+
+  void _scheduleBrowserRefresh() {
+    _browserTimer?.cancel();
+    final current = _currentState;
+    if (!_isDisposed &&
+        _browserMode &&
+        browserPollInterval > Duration.zero &&
+        current is CuratorLoadedState &&
+        current.browserProject != null) {
+      _browserTimer =
+          Timer(browserPollInterval, () => add(const RefreshBrowserEvent()));
+    }
+  }
+
+  Future<void> _pairBrowser() async {
+    final current = _currentState;
+    if (current is! CuratorLoadedState ||
+        current.browserProject == null ||
+        current.browserBusy ||
+        current.isRescraping) {
+      return;
+    }
+    final requestId = _pipelineRequestId;
+    _emit(current.copyWith(browserBusy: true, browserMessage: () => null));
+    try {
+      final code = await _browserProjects!
+          .pairBrowserProject(current.browserProject!.id);
+      if (!_isCurrentPipelineRequest(requestId)) return;
+      final latest = _currentState as CuratorLoadedState;
+      _emit(latest.copyWith(
+          browserPairingCode: () => code,
+          browserBusy: false,
+          browserMessage: () => '2분 안에 Target 탭의 확장 프로그램에 코드를 붙여 넣으세요.'));
+    } catch (_) {
+      if (_isCurrentPipelineRequest(requestId) &&
+          _currentState is CuratorLoadedState) {
+        _emit((_currentState as CuratorLoadedState).copyWith(
+            browserBusy: false,
+            browserMessage: () => '연결 코드를 만들지 못했습니다. 백엔드를 확인한 뒤 다시 시도하세요.'));
+      }
+    }
+  }
+
+  Future<void> _refreshBrowser() async {
+    final current = _currentState;
+    if (!_browserMode ||
+        _browserRefreshing ||
+        current is! CuratorLoadedState ||
+        current.browserProject == null ||
+        current.isRescraping ||
+        current.browserBusy) {
+      _scheduleBrowserRefresh();
+      return;
+    }
+    final requestId = _pipelineRequestId;
+    _browserRefreshing = true;
+    final selectionRequestId = _browserSelectionRequestId;
+    try {
+      final project = await _browserProjects!
+          .refreshBrowserProject(current.browserProject!.id);
+      if (selectionRequestId != _browserSelectionRequestId ||
+          !_isCurrentPipelineRequest(requestId) ||
+          _currentState is! CuratorLoadedState) {
+        return;
+      }
+      final latest = _currentState as CuratorLoadedState;
+      if (project.revision != latest.browserProject?.revision) {
+        _emit(latest.copyWith(
+            browserProject: project,
+            manifest:
+                latest.manifest.copyWith(items: const [], canvasImage: ''),
+            currentStep: latest.currentStep == CuratorStep.hoveringImage
+                ? CuratorStep.scrappingConfirmation
+                : latest.currentStep,
+            browserMessage: () =>
+                '새 선택 내용이 도착했습니다. 캔버스 시각화 버튼을 누르면 최신 선택을 적용합니다.'));
+      } else if (latest.browserMessage?.startsWith('연결을 확인 중') ?? false) {
+        _emit(latest.copyWith(browserMessage: () => '백엔드 연결이 복구되었습니다.'));
+      }
+    } catch (_) {
+      if (selectionRequestId == _browserSelectionRequestId &&
+          _isCurrentPipelineRequest(requestId) &&
+          _currentState is CuratorLoadedState) {
+        _emit((_currentState as CuratorLoadedState).copyWith(
+            browserMessage: () =>
+                '연결을 확인 중입니다. 저장된 선택은 유지됩니다. 백엔드 재시작 후 확장 프로그램은 다시 연결해 주세요.'));
+      }
+    } finally {
+      _browserRefreshing = false;
+      _scheduleBrowserRefresh();
+    }
+  }
+
+  Future<void> _applyBrowserSelection({bool openCanvas = false}) async {
+    final current = _currentState;
+    if (!_browserMode ||
+        current is! CuratorLoadedState ||
+        current.browserProject == null ||
+        current.isRescraping ||
+        current.browserBusy) {
+      return;
+    }
+    final requestId = _pipelineRequestId;
+    ++_browserSelectionRequestId; // Invalidate an older in-flight poll.
+    _browserTimer?.cancel();
+    _emit(current.copyWith(
+        isRescraping: true,
+        rescrapeStatus: '브라우저에서 고른 최신 상품 확인 중...',
+        browserMessage: () => null));
+    try {
+      final project = await _browserProjects!
+          .refreshBrowserProject(current.browserProject!.id);
+      if (!_isCurrentPipelineRequest(requestId) ||
+          _currentState is! CuratorLoadedState) {
+        return;
+      }
+      final latest = _currentState as CuratorLoadedState;
+      final changed = project.revision != current.browserProject!.revision;
+      final updated = latest.copyWith(
+          browserProject: project,
+          manifest: changed
+              ? latest.manifest.copyWith(items: const [], canvasImage: '')
+              : latest.manifest);
+      if (project.selectedCount == 0) {
+        _emit(updated.copyWith(
+            isRescraping: false,
+            browserMessage: () =>
+                '아직 담은 상품이 없습니다. Target에서 상품을 담은 뒤 다시 눌러 주세요.'));
+        return;
+      }
+      // Reuse a composed, unchanged selection, including the user's exclusions.
+      if (!changed && latest.allItems.isNotEmpty) {
+        _emit(updated.copyWith(
+            isRescraping: false,
+            currentStep:
+                openCanvas ? CuratorStep.hoveringImage : latest.currentStep));
+        return;
+      }
+      _emit(updated.copyWith(rescrapeStatus: '선택한 이미지로 캔버스 만드는 중...'));
+      final manifest = await _browserProjects.readBrowserSelection(project);
+      final rebuilt = await _manifestRebuilder.rebuildManifest(manifest);
+      if (rebuilt.items.isEmpty) {
+        throw StateError('No selected images were composed.');
+      }
+      if (!_isCurrentPipelineRequest(requestId) ||
+          _currentState is! CuratorLoadedState) {
+        return;
+      }
+      if ((_currentState as CuratorLoadedState).browserProject?.revision !=
+          project.revision) {
+        throw StateError('Browser selection changed during composition.');
+      }
+      _emit((_currentState as CuratorLoadedState).copyWith(
+          manifest: rebuilt,
+          isRescraping: false,
+          currentStep: openCanvas
+              ? CuratorStep.hoveringImage
+              : (_currentState as CuratorLoadedState).currentStep,
+          browserMessage: () => '선택 결과를 적용했습니다. 3단계에서 구색을 확인하세요.'));
+    } catch (_) {
+      if (_isCurrentPipelineRequest(requestId) &&
+          _currentState is CuratorLoadedState) {
+        _emit((_currentState as CuratorLoadedState).copyWith(
+            isRescraping: false,
+            browserMessage: () =>
+                '캔버스를 만들지 못했습니다. 백엔드 연결을 확인한 뒤 캔버스 버튼을 다시 눌러 주세요.'));
+      }
+    } finally {
+      _scheduleBrowserRefresh();
     }
   }
 
@@ -756,7 +1082,7 @@ class CuratorBloc {
 
     List<TargetProductCandidate> candidates;
     try {
-      candidates = await _productReviewGateway.fetchLiveCandidates(item);
+      candidates = await _matchingServices.review.fetchLiveCandidates(item);
     } catch (error) {
       if (!_isCurrentReviewRequest(requestId, itemId)) return;
       final currentState = _currentState;
@@ -809,7 +1135,7 @@ class CuratorBloc {
     TargetProductCandidate? customCandidate;
     try {
       customCandidate =
-          await _productReviewGateway.fetchProductByTargetUrl(targetUrl);
+          await _matchingServices.review.fetchProductByTargetUrl(targetUrl);
     } catch (error) {
       if (!_isCurrentUrlInspectionRequest(
         reviewRequestId: reviewRequestId,
@@ -904,6 +1230,7 @@ class CuratorBloc {
 
   Future<void> _close() async {
     _isDisposed = true;
+    _browserTimer?.cancel();
     _pipelineRequestId++;
     _reviewRequestId++;
     _urlInspectionRequestId++;

@@ -36,7 +36,7 @@ const ColorFilter _grayscaleFilter = ColorFilter.matrix(<double>[
 /// Single Composited Dynamic Canvas layer:
 /// - Clean Pure White background (#FFFFFF).
 /// - Transparent hover interaction (no hazy white background or glow).
-/// - Dynamic Item Resizing via mouse wheel scroll or +/- floating buttons.
+/// - Proportional resizing via a draggable bottom-right arrow handle.
 /// - Free-form dragging and positioning.
 /// - Speech balloon price tags with Target purchase links.
 class CuratorCanvas extends StatefulWidget {
@@ -228,22 +228,9 @@ class _CuratorCanvasState extends State<CuratorCanvas> {
   }
 
   void _notifyLayoutChanged() {
-    if (widget.onItemsLayoutChanged == null) return;
-
-    final exportList = widget.manifest.items.map((item) {
-      final off = _dragOffset(item.id);
-      final scale = _itemScale(item.id);
-      return PositionedItemExportData(
-        item: item,
-        x: item.bounds.x + off.dx,
-        y: item.bounds.y + off.dy,
-        width: item.bounds.width,
-        height: item.bounds.height,
-        scale: scale,
-      );
-    }).toList();
-
-    widget.onItemsLayoutChanged!(exportList);
+    if (!mounted || widget.onItemsLayoutChanged == null) return;
+    widget.onItemsLayoutChanged!(
+        _controller.generateExportList(widget.manifest.items));
   }
 
   @override
@@ -429,96 +416,98 @@ class _CuratorCanvasState extends State<CuratorCanvas> {
                   contours: item.contours,
                   bounds: item.bounds,
                 ),
-              child: Listener(
-                onPointerSignal: (pointerSignal) {
-                  if (pointerSignal is PointerScrollEvent) {
-                    final scrollDelta = pointerSignal.scrollDelta.dy;
-                    if (scrollDelta < 0) {
-                      _changeScale(item.id, 0.08);
-                    } else if (scrollDelta > 0) {
-                      _changeScale(item.id, -0.08);
-                    }
-                  }
-                },
-                child: MouseRegion(
-                  cursor: isDragging
-                      ? SystemMouseCursors.grabbing
-                      : SystemMouseCursors.grab,
-                  onEnter: (_) {
-                    widget.onHoverItem(item.id);
-                    _bringToTop(item.id);
-                  },
-                  onExit: (_) {
-                    if (!isDragging) widget.onHoverItem(null);
-                  },
-                  child: Focus(
-                    key: ValueKey('curator_canvas_item_focus_${item.id}'),
-                    focusNode: _itemFocusNode(item.id),
-                    onFocusChange: (hasFocus) {
-                      if (hasFocus && _controller.focusedItemId != item.id) {
-                        setState(() => _controller.setFocusedItem(item.id));
-                      } else if (!hasFocus &&
-                          _controller.focusedItemId == item.id) {
-                        setState(() => _controller.setFocusedItem(null));
+                child: Listener(
+                  onPointerSignal: (pointerSignal) {
+                    if (pointerSignal is PointerScrollEvent) {
+                      final scrollDelta = pointerSignal.scrollDelta.dy;
+                      if (scrollDelta < 0) {
+                        _changeScale(item.id, 0.08);
+                      } else if (scrollDelta > 0) {
+                        _changeScale(item.id, -0.08);
                       }
+                    }
+                  },
+                  child: MouseRegion(
+                    cursor: isDragging
+                        ? SystemMouseCursors.grabbing
+                        : SystemMouseCursors.grab,
+                    onEnter: (_) {
+                      widget.onHoverItem(item.id);
+                      _bringToTop(item.id);
                     },
-                    onKeyEvent: (_, event) => _handleItemKeyEvent(item, event),
-                    child: Semantics(
-                      button: true,
-                      label: '${item.name}, ${item.formattedPrice}',
-                      hint: 'Enter 또는 Space로 선택, +와 -로 크기 조절',
-                      onTap: () => _toggleItemSelection(item),
-                      onIncrease: () => _changeScale(item.id, 0.1),
-                      onDecrease: () => _changeScale(item.id, -0.1),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: (_) =>
-                            _itemFocusNode(item.id).requestFocus(),
-                        onTapUp: (_) {
-                          if (!isDragging) _toggleItemSelection(item);
-                        },
-                        onPanStart: (_) {
-                          _itemFocusNode(item.id).requestFocus();
-                          setState(() => _controller.startDragging(item.id));
-                          widget.onHoverItem(item.id);
-                        },
-                        onPanUpdate: (details) {
-                          setState(() {
-                            _controller.moveItem(
-                              item,
-                              CanvasOffset(
-                                details.delta.dx / scaleX,
-                                details.delta.dy / scaleY,
-                              ),
-                            );
-                          });
-                          _notifyLayoutChanged();
-                        },
-                        onPanEnd: (_) => _finishDrag(),
-                        onPanCancel: _finishDrag,
-                        child: AnimatedScale(
-                          // The flattened base already contains this item at
-                          // 1:1. Scaling only the colour overlay reveals the
-                          // grayscale copy underneath as a visible ghost.
-                          scale: isActive && !useFlattenedCanvas ? 1.05 : 1.0,
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOutCubic,
-                          child: ColorFiltered(
-                            colorFilter: isActive
-                                ? const ColorFilter.mode(
-                                    Colors.transparent,
-                                    BlendMode.dst,
-                                  )
-                                : _grayscaleFilter,
-                            child: !useFlattenedCanvas || isActive
-                                ? ProductImage(
-                                    key: ValueKey(
-                                      'curator_canvas_item_image_${item.id}',
-                                    ),
-                                    source: item.imageUrl,
-                                    semanticLabel: item.name,
-                                  )
-                                : const SizedBox.expand(),
+                    onExit: (_) {
+                      if (!isDragging) widget.onHoverItem(null);
+                    },
+                    child: Focus(
+                      key: ValueKey('curator_canvas_item_focus_${item.id}'),
+                      focusNode: _itemFocusNode(item.id),
+                      onFocusChange: (hasFocus) {
+                        if (hasFocus && _controller.focusedItemId != item.id) {
+                          setState(() => _controller.setFocusedItem(item.id));
+                        } else if (!hasFocus &&
+                            _controller.focusedItemId == item.id) {
+                          setState(() => _controller.setFocusedItem(null));
+                        }
+                      },
+                      onKeyEvent: (_, event) =>
+                          _handleItemKeyEvent(item, event),
+                      child: Semantics(
+                        button: true,
+                        label: '${item.name}, ${item.formattedPrice}',
+                        hint: 'Enter 또는 Space로 선택, +와 -로 크기 조절',
+                        onTap: () => _toggleItemSelection(item),
+                        onIncrease: () => _changeScale(item.id, 0.1),
+                        onDecrease: () => _changeScale(item.id, -0.1),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) =>
+                              _itemFocusNode(item.id).requestFocus(),
+                          onTapUp: (_) {
+                            if (!isDragging) _toggleItemSelection(item);
+                          },
+                          onPanStart: (_) {
+                            _itemFocusNode(item.id).requestFocus();
+                            setState(() => _controller.startDragging(item.id));
+                            widget.onHoverItem(item.id);
+                          },
+                          onPanUpdate: (details) {
+                            setState(() {
+                              _controller.moveItem(
+                                item,
+                                CanvasOffset(
+                                  details.delta.dx / scaleX,
+                                  details.delta.dy / scaleY,
+                                ),
+                              );
+                            });
+                            _notifyLayoutChanged();
+                          },
+                          onPanEnd: (_) => _finishDrag(),
+                          onPanCancel: _finishDrag,
+                          child: AnimatedScale(
+                            // The flattened base already contains this item at
+                            // 1:1. Scaling only the colour overlay reveals the
+                            // grayscale copy underneath as a visible ghost.
+                            scale: isActive && !useFlattenedCanvas ? 1.05 : 1.0,
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutCubic,
+                            child: ColorFiltered(
+                              colorFilter: isActive
+                                  ? const ColorFilter.mode(
+                                      Colors.transparent,
+                                      BlendMode.dst,
+                                    )
+                                  : _grayscaleFilter,
+                              child: !useFlattenedCanvas || isActive
+                                  ? ProductImage(
+                                      key: ValueKey(
+                                        'curator_canvas_item_image_${item.id}',
+                                      ),
+                                      source: item.imageUrl,
+                                      semanticLabel: item.name,
+                                    )
+                                  : const SizedBox.expand(),
+                            ),
                           ),
                         ),
                       ),
@@ -527,55 +516,68 @@ class _CuratorCanvasState extends State<CuratorCanvas> {
                 ),
               ),
             ),
-          ),
-          if (isActive)
-            Positioned(
-              top: -6,
-              right: -6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            if (isActive) ...[
+              Positioned.fill(
+                  child: IgnorePointer(
+                      child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A).withAlpha(220),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMiniScaleBtn(
-                      key: ValueKey('curator_canvas_scale_down_${item.id}'),
-                      icon: Icons.remove,
-                      tooltip: '크기 축소 (휠 아래로)',
-                      onTap: () => _changeScale(item.id, -0.1),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Text(
-                        '${(currentScale * 100).toInt()}%',
+                    border:
+                        Border.all(color: const Color(0xFF008577), width: 1.5)),
+              ))),
+              Positioned(
+                left: 2,
+                top: 2,
+                child: IgnorePointer(
+                    child: Text('${(currentScale * 100).round()}%',
                         style: const TextStyle(
-                          fontSize: 9,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    _buildMiniScaleBtn(
-                      key: ValueKey('curator_canvas_scale_up_${item.id}'),
-                      icon: Icons.add,
-                      tooltip: '크기 확대 (휠 위로)',
-                      onTap: () => _changeScale(item.id, 0.1),
-                    ),
-                  ],
-                ),
+                            fontSize: 11,
+                            color: Color(0xFF00695C),
+                            backgroundColor: Colors.white))),
               ),
-            ),
-        ],
+              Positioned(
+                right: 0,
+                bottom: 0,
+                width: math.min(32, itemW),
+                height: math.min(32, itemH),
+                child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                    child: Tooltip(
+                      message: '화살표를 드래그해 크기 조절',
+                      child: Semantics(
+                          label: '${item.name} 크기 조절',
+                          hint: '모서리를 드래그하거나 +, − 키를 누르세요.',
+                          onIncrease: () => _changeScale(item.id, 0.1),
+                          onDecrease: () => _changeScale(item.id, -0.1),
+                          child: GestureDetector(
+                            key: ValueKey('curator_canvas_resize_${item.id}'),
+                            behavior: HitTestBehavior.opaque,
+                            onPanDown: (_) =>
+                                _itemFocusNode(item.id).requestFocus(),
+                            onPanStart: (_) => setState(
+                                () => _controller.startDragging(item.id)),
+                            onPanUpdate: (details) {
+                              setState(() => _controller.resizeFromCorner(
+                                  item,
+                                  CanvasOffset(details.delta.dx / scaleX,
+                                      details.delta.dy / scaleY)));
+                              _notifyLayoutChanged();
+                            },
+                            onPanEnd: (_) => _finishDrag(),
+                            onPanCancel: _finishDrag,
+                            child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                    color: const Color(0xFF008577),
+                                    borderRadius: BorderRadius.circular(5)),
+                                child: const FittedBox(
+                                    child: Padding(
+                                        padding: EdgeInsets.all(4),
+                                        child: Icon(Icons.open_in_full,
+                                            color: Colors.white, size: 24)))),
+                          )),
+                    )),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -586,26 +588,6 @@ class _CuratorCanvasState extends State<CuratorCanvas> {
     setState(() => _controller.finishDragging());
     widget.onHoverItem(null);
     _notifyLayoutChanged();
-  }
-
-  Widget _buildMiniScaleBtn({
-    required Key key,
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        key: key,
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Icon(icon, size: 13, color: Colors.white),
-        ),
-      ),
-    );
   }
 
   Widget _buildPositionedSpeechBalloon({

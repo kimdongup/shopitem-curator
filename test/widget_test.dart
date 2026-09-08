@@ -56,19 +56,27 @@ void main() {
     final bloc = createDefaultCuratorBloc();
     bloc.add(const SelectSourceImageEvent('assets/images/new.jpg'));
 
-    await tester.pumpWidget(ShopItemCuratorApp(curatorBloc: bloc));
+    String? downloadedHtml;
+    String? downloadedFilename;
+    await tester.pumpWidget(ShopItemCuratorApp(
+        curatorBloc: bloc,
+        htmlFileSaver: ({required filename, required html}) async {
+          downloadedFilename = filename;
+          downloadedHtml = html;
+          return true;
+        }));
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 
     // Step 1: Document Input
     expect(find.text('1. 문서 입력 (Document Input)'), findsOneWidget);
-    expect(find.text('목록화 및 스크래핑 확인 ➔'), findsOneWidget);
+    expect(find.text('목록 확인 및 상품 선택 ➔'), findsOneWidget);
 
     // Tap Next -> Step 2
-    await tester.tap(find.text('목록화 및 스크래핑 확인 ➔'));
+    await tester.tap(find.text('목록 확인 및 상품 선택 ➔'));
     await tester.pumpAndSettle();
 
-    expect(find.text('2. 스크래핑 확인 (Scrapping Confirmation)'), findsOneWidget);
+    expect(find.text('2. 상품 선택 및 확인'), findsOneWidget);
     // Verify text replacement: '◀ 문서 다시 선택'
     expect(find.text('◀ 문서 다시 선택'), findsOneWidget);
     // Verify OK buttons exist
@@ -86,30 +94,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('3. 캔버스 시각화 (Hovering Image)'), findsOneWidget);
-    expect(find.text('◀ 스크래핑 확인으로 돌아가기'), findsOneWidget);
-    expect(find.text('HTML 이미지맵 출력 (Export) 🌐'), findsOneWidget);
+    expect(find.text('◀ 상품 선택으로 돌아가기'), findsOneWidget);
+    expect(find.text('HTML 다운로드'), findsOneWidget);
     expect(
         find.byKey(const ValueKey('curator_canvas_item_item_1')), findsNothing);
     expect(find.byKey(const ValueKey('curator_canvas_item_item_2')),
         findsOneWidget);
 
-    // Tap HTML Export button and verify dialog
-    await tester.ensureVisible(find.text('HTML 이미지맵 출력 (Export) 🌐'));
-    await tester.tap(find.text('HTML 이미지맵 출력 (Export) 🌐'));
+    // One click delivers a file, not a code/clipboard dialog.
+    await tester.ensureVisible(find.text('HTML 다운로드'));
+    await tester.tap(find.text('HTML 다운로드'));
     await tester.pumpAndSettle();
-    expect(find.text('인터랙티브 HTML 이미지맵 코드 출력'), findsOneWidget);
-    expect(find.text('HTML 전체 복사'), findsOneWidget);
-
-    // Close modal
-    await tester.tap(find.text('닫기'));
-    await tester.pumpAndSettle();
+    expect(downloadedFilename, 'new-curator.html');
+    expect(downloadedHtml, contains('<!DOCTYPE html>'));
+    expect(downloadedHtml, isNot(contains('data-item-id="item_1"')));
+    expect(downloadedHtml, contains('data-item-id="item_2"'));
+    expect(find.byType(Dialog), findsNothing);
 
     // Tap Previous -> Step 2
-    await tester.ensureVisible(find.text('◀ 스크래핑 확인으로 돌아가기'));
-    await tester.tap(find.text('◀ 스크래핑 확인으로 돌아가기'));
+    await tester.ensureVisible(find.text('◀ 상품 선택으로 돌아가기'));
+    await tester.tap(find.text('◀ 상품 선택으로 돌아가기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('2. 스크래핑 확인 (Scrapping Confirmation)'), findsOneWidget);
+    expect(find.text('2. 상품 선택 및 확인'), findsOneWidget);
   });
 
   testWidgets('stays responsive at 320px and gates unavailable proxy actions',
@@ -125,14 +132,15 @@ void main() {
       ShopItemCuratorApp(
         curatorBloc: bloc,
         catalogProxyEnabled: false,
+        htmlFileSaver: ({required filename, required html}) async => false,
       ),
     );
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    await tester.ensureVisible(find.text('목록화 및 스크래핑 확인 ➔'));
-    await tester.tap(find.text('목록화 및 스크래핑 확인 ➔'));
+    await tester.ensureVisible(find.text('목록 확인 및 상품 선택 ➔'));
+    await tester.tap(find.text('목록 확인 및 상품 선택 ➔'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('백엔드 상품 조회 기능'), findsOneWidget);
@@ -150,7 +158,8 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('html_export_button')));
     await tester.tap(find.byKey(const Key('html_export_button')));
     await tester.pumpAndSettle();
-    expect(find.text('인터랙티브 HTML 이미지맵 코드 출력'), findsOneWidget);
+    expect(find.text('HTML 저장을 취소했습니다.'), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

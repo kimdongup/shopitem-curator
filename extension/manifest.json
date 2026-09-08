@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "ShopItem Curator — Target에 담기",
+  "version": "0.1.0",
+  "description": "직접 고른 Target 상품 URL과 선택한 이미지 영역을 로컬 Curator 프로젝트에 보냅니다.",
+  "minimum_chrome_version": "120",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Curator 연결 / 이 탭에서 캡처 허용", "default_popup": "popup.html"},
+  "content_scripts": [{
+    "matches": ["https://www.target.com/*", "https://target.com/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

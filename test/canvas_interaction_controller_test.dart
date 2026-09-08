@@ -59,8 +59,10 @@ void main() {
     test('clamps drag offsets strictly inside canvas boundaries', () {
       // Trying to drag item1 off the left/top edge
       controller.moveItem(item1, const CanvasOffset(-100, -100));
-      expect(controller.dragOffset('item_1').dx, -50.0); // left bound clamped at 0
-      expect(controller.dragOffset('item_1').dy, -50.0); // top bound clamped at 0
+      expect(
+          controller.dragOffset('item_1').dx, -50.0); // left bound clamped at 0
+      expect(
+          controller.dragOffset('item_1').dy, -50.0); // top bound clamped at 0
       expect(controller.hasCustomLayout, isTrue);
 
       // Trying to drag item1 beyond the right/bottom edge
@@ -89,6 +91,29 @@ void main() {
 
       controller.finishDragging();
       expect(controller.draggingItemId, isNull);
+    });
+
+    test(
+        'corner resize is proportional, anchored and clamps to available space',
+        () {
+      controller.resizeFromCorner(item2, const CanvasOffset(75, 100));
+      expect(controller.itemScale(item2.id), 1.5);
+      expect(controller.dragOffset(item2.id), CanvasOffset.zero);
+      controller.resizeFromCorner(item2, const CanvasOffset(-75, -100));
+      expect(controller.itemScale(item2.id), 1);
+      controller.moveItem(item2, const CanvasOffset(800, 400));
+      final anchor = controller.dragOffset(item2.id);
+      controller.resizeFromCorner(item2, const CanvasOffset(5000, 5000));
+      final exported = controller.generateExportList([item1, item2]).last;
+      expect(exported.x + exported.width * exported.scale,
+          lessThanOrEqualTo(1200));
+      expect(exported.y + exported.height * exported.scale,
+          lessThanOrEqualTo(820));
+      expect(controller.dragOffset(item2.id), anchor);
+      controller.resizeFromCorner(item2, const CanvasOffset(-5000, -5000));
+      expect(controller.itemScale(item2.id), 0.4);
+      controller.resizeFromCorner(item2, const CanvasOffset(double.nan, 20));
+      expect(controller.itemScale(item2.id), 0.4);
     });
 
     test('resets layout to initial state', () {

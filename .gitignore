@@ -41,6 +41,8 @@ migrate_working_dir/
 
 # Recoverable document deletions and interrupted uploads are private runtime data.
 /assets/.document_trash/
+/assets/.curator_projects/
+/server/browser/node_modules/
 /assets/images/.upload-*
 
 # Public sample allowlist. New documents, generated user manifests, and exports

@@ -4,8 +4,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shopitem_curator/core/models/curator_item.dart';
 import 'package:shopitem_curator/ui/widgets/curator_canvas.dart';
 import 'package:shopitem_curator/ui/widgets/speech_balloon_tag.dart';
+import 'package:shopitem_curator/core/services/html_imagemap_exporter.dart';
 
 void main() {
+  testWidgets(
+      'corner arrow grows and shrinks without moving the anchor and updates export',
+      (tester) async {
+    final item = _item(
+        id: 'resizable',
+        bounds: const ItemLayoutBounds(x: 20, y: 20, width: 40, height: 20),
+        polygon: const [
+          CuratorPoint(20, 20),
+          CuratorPoint(60, 20),
+          CuratorPoint(60, 40),
+          CuratorPoint(20, 40)
+        ],
+        centroid: const CuratorPoint(40, 30));
+    List<PositionedItemExportData> exported = [];
+    await tester.pumpWidget(_host(CuratorCanvas(
+        manifest:
+            CuratorManifest(canvasWidth: 100, canvasHeight: 100, items: [item]),
+        hoveredItemId: null,
+        selectedItemId: null,
+        onHoverItem: (_) {},
+        onSelectItem: (_) {},
+        onDismissSelection: () {},
+        onItemsLayoutChanged: (items) => exported = items)));
+    final box = find.byKey(const ValueKey('curator_canvas_item_resizable'));
+    final before = tester.getRect(box);
+    await tester.tapAt(before.center);
+    await tester.pump();
+    final handle =
+        find.byKey(const ValueKey('curator_canvas_resize_resizable'));
+    expect(handle, findsOneWidget);
+    await tester.drag(handle, const Offset(45, 25));
+    await tester.pump();
+    final enlarged = tester.getRect(box);
+    expect(enlarged.width, greaterThan(before.width));
+    expect(enlarged.topLeft, before.topLeft);
+    expect(enlarged.width / enlarged.height, closeTo(2, 0.001));
+    expect(exported.single.scale, greaterThan(1));
+    await tester.drag(handle, const Offset(-45, -25));
+    await tester.pump();
+    expect(tester.getRect(box).width, lessThan(enlarged.width));
+    expect(tester.getRect(box).topLeft, before.topLeft);
+    expect(find.byKey(const ValueKey('curator_canvas_scale_up_resizable')),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('only the segmented silhouette accepts item taps',
       (tester) async {
     String? selectedItemId;

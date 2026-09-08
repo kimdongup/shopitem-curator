@@ -8,18 +8,28 @@
 - `lib/ui/`: Flutter 화면, 위젯, 플랫폼 리소스 어댑터
 - `lib/main.dart`: 의존성을 조립하는 Flutter composition root
 - `server/`: 로컬 Tesseract OCR·Target 호출과 이미지 전달을 담당하는 인증 경계
+- `extension/`: Target 페이지의 이동식 Curator 위젯 (Chrome Manifest V3, 로컬 연결)
 - `assets/items/`: 검증된 상품 이미지, 합성 캔버스, 매니페스트
 - `tool/`: 매니페스트/캔버스 및 독립 HTML 생성 도구
 
-Core는 UI 타입을 알지 못하며, UI는 BLoC 이벤트와 상태 스트림을 통해 Core와 통신합니다. 자세한 요구사항은 [`agents.md`](agents.md), 실행·복구·배포 방법은 [`usage.md`](usage.md)를 참고하세요.
+Core는 UI 타입을 알지 못하며, UI는 BLoC 이벤트와 상태 스트림을 통해 Core와 통신합니다. 자세한 요구사항은 [`agents.md`](agents.md), 실행·복구·배포 방법은 [`USAGE.md`](USAGE.md)를 참고하세요.
 
 ## 현재 제약과 배포 상태
 
-Target 서버용 API 사용 권한이 없는 기본 환경에서는 RedSky API를 호출하지 않습니다. 공개 HTML에서 상품을 찾지 못하면 원인을 표시하며, 저장된 샘플 카탈로그는 실시간 가격·재고가 아닙니다. `big notebook`, `shoes for running`, `bicycle`의 자동 매칭은 아직 복구되지 않았습니다. 403에 대한 브라우저 위장·세션 교체·반복 요청은 사용하지 않습니다. [검토 결과와 변경 사항](docs/target-search-review.md)을 참고하세요.
+Target 서버용 API 사용 권한이 없는 기본 환경에서는 RedSky API를 직접 호출하지 않습니다. 공개 HTML에서 상품을 찾지 못하면 원인을 표시하며, 저장된 샘플 카탈로그는 실시간 가격·재고가 아닙니다. `big notebook`, `shoes for running`, `bicycle`의 실제 자동 매칭 복구는 아직 확인되지 않았습니다. 명시적으로 선택한 추가 전략은 아래와 같으며, 403 이후에는 헤더·프록시·세션을 바꿔 자동 재시도하지 않습니다. [검토 결과와 변경 사항](docs/target-search-review.md)을 참고하세요.
 
-Render 배포는 사용자 요청으로 보류 중이며 예산은 0원입니다. 현재 저장소는 로컬 실행용 소스이며, 운영 인증 gateway와 컨테이너 배포 구현은 아직 없습니다. [배포 계획](deploy.md)의 운영 확장안은 별도 승인이 필요합니다.
+GitHub·Render 배포 재개를 준비 중이며 예산은 0원입니다. 현재 저장소는 로컬 실행용 소스이며, 운영 인증 gateway와 컨테이너 배포 구현은 아직 없습니다. Render 무료 환경의 업로드 소실 조건 확인과 인증 구현이 필요하며, 확장 프로그램의 원격 연결도 아직 지원하지 않습니다. 현재 상태와 선행 조건은 [배포 계획](deploy.md)을 확인하세요.
 
 ## 빠른 시작
+
+로컬 앱은 **브라우저에서 직접 선택** 모드로 시작합니다. Target 페이지 위의 이동식 버튼에서
+상품 URL과 직접 잘라 고른 PNG를 담으며, 이 모드는 서버 Target 검색 API를 호출하지 않습니다.
+설치·연결·담기·캔버스·자동 전략까지의 **[7컷 스토리보드](USAGE.md#스토리보드-사진-한-장에서-쇼핑-캔버스까지)**를 먼저 보세요.
+자동 조회 모드도 1단계에서 선택할 수 있지만 기존 접근 제한이 해소된 것은 아닙니다.
+**자동 조회 · 전략 선택 → 자동 매칭 실행**에서 헤더 프로필, 운영자 프록시 풀, 랜덤 간격,
+임시 브라우저 이동·스크롤, webdriver 표시 숨김(실험), 상품 JSON 응답 관찰을 개별/조합 선택합니다.
+미설정 전략은 비활성화됩니다. 차단 상태와 Retry-After는 모든 전략이 공유하며, 유료 프록시를 구매하지 않습니다.
+[준비 조건·사용 순서·확장 프로그램과의 비교](USAGE.md#컷-7--자동-추출-전략을-골라-비교하기)를 확인하세요.
 
 ```bash
 flutter pub get
@@ -45,11 +55,11 @@ Chrome/macOS에서 프록시 준비 확인과 앱 실행을 한 명령으로 처
 
 로컬 Web은 `CURATOR_BACKEND_URL`을 생략해도 `http://127.0.0.1:8787`을 사용합니다. 운영 Web은 계속 현재 origin의 `/v1/*`를 사용하므로 reverse proxy 라우팅이 필요합니다.
 
-Flutter Web/데스크톱은 Target에 직접 접속하지 않습니다. OCR, 상품 조회, 재검토, 재스크래핑 및 원격 상품 이미지는 모두 Dart 백엔드 프록시를 거칩니다. OCR은 서버 내부 Tesseract 프로세스에서 실행되며 Google API 또는 다른 외부 OCR API 호출과 API 키가 필요 없습니다. 운영 인증/CORS 구성은 [`usage.md`](usage.md)를 참고하세요.
+Flutter Web/데스크톱은 Target에 직접 접속하지 않습니다. OCR, 상품 조회, 재검토, 재스크래핑 및 원격 상품 이미지는 모두 Dart 백엔드 프록시를 거칩니다. OCR은 서버 내부 Tesseract 프로세스에서 실행되며 Google API 또는 다른 외부 OCR API 호출과 API 키가 필요 없습니다. 운영 인증/CORS 구성은 [`USAGE.md`](USAGE.md)를 참고하세요.
 
 OCR 기본 언어는 영어(`eng`)입니다. 서버 환경변수 `CURATOR_TESSERACT_BIN`(기본 `tesseract`), `CURATOR_OCR_LANGUAGE`(기본 `eng`)로 경로와 설치된 언어를 지정합니다. Linux/Render 런타임에는 `tesseract-ocr`와 `tesseract-ocr-eng` 패키지가 필요합니다. 로컬 준비 상태는 `bash tool/run_dev.sh --check`, 실제 이미지 추출은 `dart run tool/check_local_ocr.dart`로 확인합니다.
 
-Target의 AVIF 이미지는 서버의 `libavif` (`avifdec`)로 투명도를 보존한 8-bit PNG로 변환한 뒤 기존 Pure Dart 합성·윤곽선 처리에 전달합니다. macOS/Web 모두 같은 경로를 사용하며 Google API는 필요 없습니다. Linux 런타임에는 `libavif-bin`도 설치하고 `avifdec --help`에 `--size-limit`와 `--dimension-limit`가 있는지 확인하세요. PATH에서 찾지 못하면 서버 환경에 `CURATOR_AVIFDEC_BIN`을 지정합니다. 변경 적용 후 백엔드와 Flutter 앱을 재시작하고 해당 문서의 파이프라인을 다시 실행하세요. 상세 설치·검증은 [AVIF 지원](usage.md#target-avif-이미지-지원)을 참고하세요.
+Target의 AVIF 이미지는 서버의 `libavif` (`avifdec`)로 투명도를 보존한 8-bit PNG로 변환한 뒤 기존 Pure Dart 합성·윤곽선 처리에 전달합니다. macOS/Web 모두 같은 경로를 사용하며 Google API는 필요 없습니다. Linux 런타임에는 `libavif-bin`도 설치하고 `avifdec --help`에 `--size-limit`와 `--dimension-limit`가 있는지 확인하세요. PATH에서 찾지 못하면 서버 환경에 `CURATOR_AVIFDEC_BIN`을 지정합니다. 변경 적용 후 백엔드와 Flutter 앱을 재시작하고 해당 문서의 파이프라인을 다시 실행하세요. 상세 설치·검증은 [AVIF 지원](USAGE.md#target-avif-이미지-지원)을 참고하세요.
 
 목록과 `Item / Description / Quantity` 표를 좌표 기반으로 해석합니다. 인식 품질은 사진의 선명도·언어 데이터에 따라 달라지며 손글씨·복잡한 문서에서 Gemini와 동일한 정확도를 보장하지 않습니다. 실패하면 샘플 목록으로 대체하지 않고 오류를 표시합니다.
 
@@ -59,7 +69,7 @@ Flutter가 프록시보다 먼저 시작되면 화면에 백엔드 대기 상태
 
 1번 화면의 드롭다운에서 **새 문서 추가…**로 JPEG/PNG 문서를 선택할 수 있습니다(최대 8 MiB·1,600만 화소). 각 문서의 휴지통 버튼은 확인 후 서버의 원본·전용 에셋을 삭제 목록으로 이동하며, 공유 에셋은 보존합니다. 삭제 파일은 `assets/.document_trash/`에서 수동 복구할 수 있습니다.
 
-입력 문서는 서버 `assets/images/`에 저장되며 `CURATOR_ASSETS_DIR`로 저장소를 변경할 수 있습니다. 파일 선택 전의 원본이나 Flutter 번들을 지우지는 않습니다. 기능 적용에는 백엔드와 Flutter 앱의 완전 재시작이 필요합니다. 자세한 동작과 제약은 [문서 관리 사용법](usage.md#1-1번-화면의-문서-선택추가삭제)을 참고하세요.
+입력 문서는 서버 `assets/images/`에 저장되며 `CURATOR_ASSETS_DIR`로 저장소를 변경할 수 있습니다. 파일 선택 전의 원본이나 Flutter 번들을 지우지는 않습니다. 기능 적용에는 백엔드와 Flutter 앱의 완전 재시작이 필요합니다. 자세한 동작과 제약은 [문서 관리 사용법](USAGE.md#1-1번-화면의-문서-선택추가삭제)을 참고하세요.
 
 Git과 Flutter 번들은 검토된 두 입력 샘플과 필요한 상품 에셋만 명시적으로 포함합니다. 새 업로드·개인별 생성 결과·휴지통·독립 HTML 내보내기·`.env`는 공개 대상에서 제외합니다. 별도의 공개 샘플을 추가하려면 `.gitignore`와 `pubspec.yaml`을 함께 검토하세요.
 
