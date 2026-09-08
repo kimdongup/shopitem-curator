@@ -34,7 +34,8 @@ class BrowserProjectPanel extends StatelessWidget {
           const SizedBox(height: 8),
           const Text('Chrome에 extension 폴더를 설치한 뒤 Target 탭에서 확장 아이콘을 누르세요. '
               '연결 코드를 입력하면 페이지 위의 이동식 Curator 버튼으로 한 품목씩 검색하고 담을 수 있습니다. '
-              'Target 로그인이나 서버 검색 API는 사용하지 않습니다. 현재 연결은 로컬 백엔드 전용입니다.'),
+              'Target 로그인이나 서버 검색 API는 사용하지 않습니다. '
+              '확장 팝업의 서버 주소에는 현재 앱 주소(로컬은 http://127.0.0.1:8787)를 입력하세요.'),
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
             OutlinedButton.icon(

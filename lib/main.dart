@@ -28,12 +28,14 @@ Uri resolveBackendBaseUri({
   String configuredUrl = _configuredBackendUrl,
   bool? web,
   Uri? applicationBaseUri,
+  bool hostedPreview = const bool.fromEnvironment('CURATOR_PREVIEW'),
 }) {
   final isWeb = web ?? kIsWeb;
   final appBase = applicationBaseUri ?? Uri.base;
   final configured = configuredUrl.trim();
 
-  final useLoopbackDefault = !isWeb || _isLoopbackHost(appBase.host);
+  final useLoopbackDefault =
+      !isWeb || (!hostedPreview && _isLoopbackHost(appBase.host));
   final candidate = configured.isEmpty
       ? useLoopbackDefault
           ? Uri.parse('http://127.0.0.1:8787/')
@@ -120,9 +122,8 @@ void main() {
       },
     ),
     documentRepository: backendGateway,
-    browserProjectGateway:
-        _isLoopbackHost(backendUri.host) ? backendGateway : null,
-    startInBrowserMode: _isLoopbackHost(backendUri.host),
+    browserProjectGateway: backendGateway,
+    startInBrowserMode: true,
     onDispose: () {
       backendGateway.close();
       httpClient.close();
@@ -191,6 +192,7 @@ class _ShopItemCuratorAppState extends State<ShopItemCuratorApp> {
       title: 'ShopItem Curator',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        fontFamily: 'NotoSansKR',
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
         colorScheme: const ColorScheme.dark(

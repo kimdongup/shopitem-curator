@@ -49,6 +49,10 @@ migrate_working_dir/
 # remain local unless individually reviewed and explicitly added here.
 /assets/images/*
 /assets/items/*
+/assets/fonts/*
+!/assets/fonts/NotoSansKR.ttf
+!/assets/fonts/OFL.txt
+!/assets/fonts/README.md
 !/assets/images/new.jpg
 !/assets/images/media_1787068853075.jpg
 !/assets/items/manifest_new.json

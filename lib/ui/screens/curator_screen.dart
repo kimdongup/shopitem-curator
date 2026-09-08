@@ -88,6 +88,21 @@ class _CuratorScreenState extends State<CuratorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: const bool.fromEnvironment('CURATOR_PREVIEW')
+          ? AppBar(
+              toolbarHeight: 38,
+              title: const Text('무료 체험 · 서버 재시작 시 문서 소실',
+                  style: TextStyle(fontSize: 12)),
+              actions: [
+                IconButton(
+                  tooltip: '로그아웃',
+                  onPressed: () => launchUrl(Uri.base.resolve('/logout'),
+                      webOnlyWindowName: '_self'),
+                  icon: const Icon(Icons.logout, size: 18),
+                ),
+              ],
+            )
+          : null,
       body: StreamBuilder<CuratorState>(
         stream: bloc.stateStream,
         initialData: bloc.state,

@@ -28,6 +28,8 @@ final class TesseractTextRecognizer implements ImageTextRecognizer {
           executable:
               Platform.environment['CURATOR_TESSERACT_BIN'] ?? 'tesseract',
           language: Platform.environment['CURATOR_OCR_LANGUAGE'] ?? 'eng',
+          maxConcurrentJobs: int.parse(
+              Platform.environment['CURATOR_OCR_MAX_CONCURRENT_JOBS'] ?? '2'),
           timeout: timeout ?? const Duration(seconds: 30));
 
   final String executable, language;

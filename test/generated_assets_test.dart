@@ -12,9 +12,27 @@ void main() {
     'assets/items/manifest_media_1787068853075.json': 25,
   };
 
+  test('Korean and symbol engine fallbacks are self-hosted with licenses', () {
+    final fonts = Directory('web/font-fallback')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.woff2'))
+        .toList();
+    expect(fonts, hasLength(130));
+    for (final font in fonts) {
+      expect(String.fromCharCodes(font.readAsBytesSync().take(4)), 'wOF2');
+    }
+    expect(File('web/flutter_bootstrap.js').readAsStringSync(),
+        contains("fontFallbackBaseUrl: new URL('font-fallback/'"));
+    for (final family in ['Korean', 'Symbols']) {
+      expect(File('web/font-fallback/$family-OFL.txt').readAsStringSync(),
+          contains('SIL OPEN FONT LICENSE'));
+    }
+  });
+
   test('public bundle includes only reviewed sample manifests and their assets',
       () async {
-    final expected = <String>{...generatedAssets.keys};
+    final expected = <String>{...generatedAssets.keys, 'assets/fonts/OFL.txt'};
     for (final path in generatedAssets.keys) {
       final manifest = await const DefaultItemRepository()
           .loadManifest(await File(path).readAsString());
@@ -30,7 +48,13 @@ void main() {
         .map((match) => match.group(1)!)
         .toSet();
     expect(bundled, expected);
+    expect(pubspec, contains('asset: assets/fonts/NotoSansKR.ttf'));
+    expect(File('assets/fonts/NotoSansKR.ttf').lengthSync(), greaterThan(1000));
+    expect(File('assets/fonts/OFL.txt').readAsStringSync(),
+        contains('SIL OPEN FONT LICENSE'));
     final ignore = File('.gitignore').readAsLinesSync();
+    final dockerIgnore = File('.dockerignore').readAsLinesSync();
+    expect(dockerIgnore, contains('**'));
     expect(
         ignore,
         containsAll([
@@ -42,6 +66,7 @@ void main() {
         ]));
     for (final path in bundled) {
       expect(ignore, contains('!/$path'));
+      expect(dockerIgnore, contains('!$path'));
       expect(File(path).existsSync(), isTrue);
     }
   });

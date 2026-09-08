@@ -16,6 +16,7 @@ function harness() {
     chrome: {
       runtime: {id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', getURL: p => 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/' + p,
         onMessage: {addListener: fn => { listener = fn; }}},
+      permissions: {contains: async () => !storage.denyPermission},
       storage: {session: {setAccessLevel: async () => {},
         get: async key => ({[key]: storage[key]}), set: async data => Object.assign(storage, structuredClone(data)),
         remove: async keys => { for (const key of Array.isArray(keys) ? keys : [keys]) delete storage[key]; }}},
@@ -124,7 +125,24 @@ test('manifest stays Target-only without cookies, side panel or all-URLs capture
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json')));
   assert.deepEqual(manifest.permissions, ['activeTab', 'storage']);
   assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*']);
+  assert.deepEqual(manifest.optional_host_permissions, ['https://*.onrender.com/*']);
   assert.equal(manifest.side_panel, undefined);
   assert.equal(manifest.content_scripts[0].all_frames, false);
   assert.ok(manifest.content_scripts[0].matches.every(m => /^https:\/\/(www\.)?target\.com\/\*$/.test(m)));
+});
+
+test('remote host must be explicitly permitted; tokens remain on the paired host', async () => {
+  const h = harness();
+  const packet = {kind: 'pair', code: 'b'.repeat(32), backendOrigin: 'https://shopitem-curator.onrender.com'};
+  h.storage.denyPermission = true;
+  await assert.rejects(h.request(packet, h.popup));
+  assert.equal(h.calls.length, 0);
+  h.storage.denyPermission = false;
+  await h.request(packet, h.popup);
+  await h.request({kind: 'state', backendOrigin: 'https://evil.onrender.com'});
+  assert.ok(h.calls.every(c => c.url.startsWith(packet.backendOrigin + '/v1/browser-bridge/')));
+  for (const backendOrigin of ['http://evil.onrender.com', 'https://evil.test', 'https://a.onrender.com@evil.test',
+      'https://a.onrender.com/path', 'https://a.onrender.com?token=secret', 'http://127.0.0.1:9000']) {
+    await assert.rejects(h.request({...packet, backendOrigin}, h.popup));
+  }
 });

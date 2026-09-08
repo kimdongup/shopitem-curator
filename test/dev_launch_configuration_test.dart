@@ -46,6 +46,8 @@ void main() {
         File('tool/flutter_without_server_secrets.sh').readAsStringSync();
     expect(flutterWrapper, contains('-u GEMINI_API_KEY'));
     expect(flutterWrapper, contains('-u CURATOR_PROXY_TOKEN'));
+    expect(flutterWrapper, contains('-u CURATOR_PREVIEW_PASSWORD'));
+    expect(runner, contains('-u CURATOR_PREVIEW_PASSWORD'));
     expect(flutterWrapper, contains('-u CURATOR_TARGET_REDSKY_KEY'));
     expect(runner, contains('-u CURATOR_TARGET_REDSKY_KEY'));
     expect(flutterWrapper, contains('-u CURATOR_MATCHING_PROXY_POOL'));

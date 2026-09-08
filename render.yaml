@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Single-owner, ephemeral preview. No disks, databases or paid instances.
+services:
+  - type: web
+    name: shopitem-curator
+    runtime: docker
+    repo: https://github.com/kimdongup/shopitem-curator
+    branch: main
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: CURATOR_PREVIEW_PASSWORD
+        generateValue: true
+      - key: CURATOR_OCR_MAX_CONCURRENT_JOBS
+        value: "1"
+      - key: OMP_THREAD_LIMIT
+        value: "1"

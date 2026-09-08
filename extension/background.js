@@ -1,21 +1,21 @@
 importScripts('protocol.js');
 const P = CuratorProtocol;
-const BASE = 'http://127.0.0.1:8787/v1/browser-bridge/';
 const POPUP = chrome.runtime.getURL('popup.html');
 // Content scripts never receive the capability, pairing code or full auth state.
 void chrome.storage.session.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'});
 let busy = false;
 
-async function api(path, body, token) {
-  const response = await fetch(BASE + path, {
+async function api(path, body, token, backendOrigin) {
+  const base = P.backendOrigin(backendOrigin);
+  const response = await fetch(base + '/v1/browser-bridge/' + path, {
     method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
     headers: {'Content-Type': 'application/json', 'X-Curator-Extension-Id': chrome.runtime.id,
       ...(token ? {Authorization: 'Bearer ' + token} : {})},
-    body: JSON.stringify(body), signal: AbortSignal.timeout(15000),
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000),
   });
   if (!response.ok) {
     const messages = {401: '연결이 만료되었습니다. 앱에서 새 코드를 발급받아 연결하세요.',
-      403: '로컬 백엔드와 확장 프로그램 연결 설정을 확인하세요.',
+      403: '서버 주소와 확장 프로그램 연결 설정을 확인하세요.',
       404: '문서 또는 연결 기능을 찾지 못했습니다. 최신 백엔드를 실행하세요.',
       409: '선택 내용이 바뀌었습니다. 목록을 새로고침한 뒤 다시 담으세요.',
       413: '이미지 영역이 큽니다. 더 작게 잘라 주세요.',
@@ -35,7 +35,7 @@ async function activeTargetTab() {
   return tab;
 }
 async function refresh(c) {
-  const project = await api('read', {}, c.token);
+  const project = await api('read', {}, c.token, c.backendOrigin);
   const latest = await connection();
   if (latest.token !== c.token || latest.tabId !== c.tabId) throw new Error('연결이 변경되었습니다.');
   const item = project.entries.find(e => e.id === c.itemId) ?? P.nextPending(project);
@@ -56,7 +56,7 @@ async function handle(message, sender) {
     if (message.kind === 'disconnect') {
       const {connection: existing} = await chrome.storage.session.get('connection');
       if (existing) {
-        try { await api('disconnect', {}, existing.token); }
+        try { await api('disconnect', {}, existing.token, existing.backendOrigin); }
         catch { /* Offline logout still removes the local capability. */ }
       }
       await chrome.storage.session.remove(['connection', 'capture']);
@@ -64,10 +64,15 @@ async function handle(message, sender) {
     }
     if (message.kind === 'pair') {
       if (!/^[a-f0-9]{32}$/.test(message.code)) throw new Error('앱의 32자리 연결 코드를 입력하세요.');
+      const backendOrigin = P.backendOrigin(message.backendOrigin);
+      if (backendOrigin.startsWith('https:') &&
+          !await chrome.permissions.contains({origins: [backendOrigin + '/*']})) {
+        throw new Error('이 Render 서버에 대한 연결 권한을 허용하세요.');
+      }
       const tab = await activeTargetTab();
-      const result = await api('pair', {code: message.code});
+      const result = await api('pair', {code: message.code}, undefined, backendOrigin);
       const item = P.nextPending(result.project) ?? result.project.entries[0];
-      const c = {token: result.token, project: result.project, tabId: tab.id, itemId: item?.id};
+      const c = {token: result.token, backendOrigin, project: result.project, tabId: tab.id, itemId: item?.id};
       await chrome.storage.session.set({connection: c});
       await chrome.storage.session.remove('capture');
       await sendToTab(tab.id);
@@ -130,7 +135,7 @@ async function handle(message, sender) {
       body = {action: 'skip', item_id: c.itemId, revision: c.project.revision,
         operation_id: P.operationId()};
     }
-    const project = await api('select', body, c.token);
+    const project = await api('select', body, c.token, c.backendOrigin);
     const nextItem = P.nextPending(project, c.itemId);
     c = {...c, project, itemId: nextItem?.id ?? c.itemId};
     await chrome.storage.session.set({connection: c});
@@ -149,7 +154,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   busy = true;
   handle(message ?? {}, sender).then(value => reply({ok: true, ...value}), error => {
     const text = error instanceof TypeError || error.name === 'TimeoutError'
-      ? '로컬 백엔드에 연결할 수 없습니다. 백엔드 실행 상태를 확인하세요.' : error.message;
+      ? '서버에 연결할 수 없습니다. 앱을 먼저 열어 서버를 깨우고 주소·권한을 확인하세요.' : error.message;
     reply({ok: false, error: text || '요청을 처리하지 못했습니다.'});
   }).finally(() => { busy = false; });
   return true;

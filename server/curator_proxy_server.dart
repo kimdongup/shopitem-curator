@@ -283,8 +283,9 @@ final class CuratorProxyServer {
         _imageFetcher = imageFetcher ?? _DartIoTargetImageFetcher(),
         _avifDecoder = avifDecoder ?? AvifDecImageDecoder.fromEnvironment();
 
-  factory CuratorProxyServer.fromPlatformEnvironment() {
-    final config = CuratorProxyConfig.fromPlatformEnvironment();
+  factory CuratorProxyServer.fromPlatformEnvironment(
+      {CuratorProxyConfig? config}) {
+    config ??= CuratorProxyConfig.fromPlatformEnvironment();
 
     final recognizer = TesseractTextRecognizer.fromEnvironment(
       timeout: config.upstreamTimeout,
@@ -644,13 +645,15 @@ final class CuratorProxyServer {
   }
 
   Future<void> _handleBrowserBridge(HttpRequest request) async {
-    // MVP deliberately loopback-only. Do not expose pairing on a public bind.
+    // Always loopback-only. Hosted access must pass the authenticated gateway
+    // boundary; project codes/capabilities are still verified independently.
     final remote = request.connectionInfo?.remoteAddress;
     if (!_isLoopbackAddress(config.bindAddress) ||
         remote == null ||
         !_isLoopbackAddress(remote)) {
       throw const _ProxyHttpException(403, 'The browser bridge is local-only.');
     }
+    if (config._trustedAuthHeader != null) _authenticate(request);
     final origin = request.headers.value('Origin');
     final extensionPattern = RegExp(r'^chrome-extension://([a-p]{32})$');
     final originMatch =

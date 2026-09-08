@@ -3,6 +3,18 @@ import 'package:shopitem_curator/main.dart';
 
 void main() {
   group('resolveBackendBaseUri', () {
+    test('hosted preview uses its origin even during a local container smoke',
+        () {
+      expect(
+        resolveBackendBaseUri(
+          configuredUrl: '',
+          web: true,
+          hostedPreview: true,
+          applicationBaseUri: Uri.parse('http://127.0.0.1:18201/'),
+        ),
+        Uri.parse('http://127.0.0.1:18201/'),
+      );
+    });
     test('uses a non-loopback web origin when no URL is configured', () {
       final result = resolveBackendBaseUri(
         configuredUrl: '',

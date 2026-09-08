@@ -165,7 +165,20 @@ node extension/test/content_smoke.cjs
 
 연결 권한은 페이지 DOM이나 content script에 전달하지 않고 확장의 `storage.session`에만 둡니다. Target 페이지 표시·로컬 서버 통신과 `activeTab`, `storage`만 사용하며 `cookies`, `webRequest`, `<all_urls>`, 사이드 패널 권한은 요청하지 않습니다. [Chrome content scripts](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts), [탭 캡처 API](https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab).
 
-**현재 범위는 로컬 MVP입니다.** 확장은 `127.0.0.1:8787` 전용이고 브리지 라우트는 loopback 연결만 허용합니다. 원격 Web에서는 이 기능을 아직 제공하지 않으며 reverse proxy로 `/v1/browser-bridge/*`를 공개하지 마세요. Render 배포 재개를 준비 중이지만 유료 자원은 만들지 않습니다. 원격 확장 연결과 HTTPS 인증을 구현하고, 무료 환경의 데이터 소실 조건을 확인한 뒤 서비스를 생성해야 합니다. [현재 배포 상태](deploy.md)를 참고하세요.
+**로컬 또는 개인용 Render 체험에 연결할 수 있습니다.** 내부 브리지는 계속 loopback 전용입니다. Render에서는 앱 세션 인증과 프로젝트 권한을 분리해 검증하는 전용 게이트웨이를 사용합니다. 임의 reverse proxy로 브리지 제한을 해제하지 마세요. [현재 배포 상태](deploy.md)를 참고하세요.
+
+### Render에서 이용하기
+
+1. 최신 `extension/`을 내려받고 `chrome://extensions`에서 Curator의 **새로고침**을 누릅니다. Target 탭도 새로고침합니다.
+2. Render 앱을 먼저 열어 서버가 깨어나기를 기다립니다. 서비스 Environment의 `CURATOR_PREVIEW_PASSWORD`로 로그인합니다. 이 비밀번호는 확장 팝업에 넣지 않습니다.
+3. 앱 1단계에서 사진을 선택하고 2단계에서 **확장 프로그램 연결 코드**를 누릅니다.
+4. Target 탭의 확장 팝업에서 **Curator 서버 주소**에 Render 앱의 `https://…onrender.com` 주소를 입력합니다. 로컬로 돌아가려면 `http://127.0.0.1:8787`을 입력합니다.
+5. 일회용 코드를 입력하고 **프로젝트 연결**을 누릅니다. Chrome이 묻는 **해당 Render 서버의 연결 권한**을 허용합니다. 모든 사이트 권한이나 Target 쿠키 권한은 필요하지 않습니다. [Chrome 선택적 호스트 권한](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions)
+6. 기존 스토리보드처럼 품목 검색 → 이미지 영역 선택 → 담기를 반복하고, 앱에서 **캔버스 시각화 및 인터랙션**을 누릅니다.
+7. 필요한 결과는 **HTML 다운로드**로 보관합니다. 무료 서버가 쉬거나 재시작·재배포되면 문서·캡처·연결이 사라질 수 있습니다. HTML은 프로젝트 복원용 백업이 아니므로 원본 사진도 보관하세요.
+8. 앱 상단 로그아웃을 누르고 확인합니다. 확장 권한은 별도이므로 확장 팝업에서도 **연결 해제**를 누릅니다.
+
+재시작 또는 세션 만료 후에는 앱을 새로고침해 다시 로그인하고 새 코드를 발급받습니다. 비밀번호 공유 시 문서 열람·삭제 권한도 공유됩니다. 무료 컨테이너에는 서버용 브라우저 자동화 전략이 포함되지 않지만 사용자 Chrome의 직접 선택 기능은 사용할 수 있습니다.
 
 ---
 

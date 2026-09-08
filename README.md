@@ -8,7 +8,7 @@
 - `lib/ui/`: Flutter 화면, 위젯, 플랫폼 리소스 어댑터
 - `lib/main.dart`: 의존성을 조립하는 Flutter composition root
 - `server/`: 로컬 Tesseract OCR·Target 호출과 이미지 전달을 담당하는 인증 경계
-- `extension/`: Target 페이지의 이동식 Curator 위젯 (Chrome Manifest V3, 로컬 연결)
+- `extension/`: Target 페이지의 이동식 Curator 위젯 (Chrome Manifest V3, 로컬/Render 연결)
 - `assets/items/`: 검증된 상품 이미지, 합성 캔버스, 매니페스트
 - `tool/`: 매니페스트/캔버스 및 독립 HTML 생성 도구
 
@@ -18,7 +18,7 @@ Core는 UI 타입을 알지 못하며, UI는 BLoC 이벤트와 상태 스트림�
 
 Target 서버용 API 사용 권한이 없는 기본 환경에서는 RedSky API를 직접 호출하지 않습니다. 공개 HTML에서 상품을 찾지 못하면 원인을 표시하며, 저장된 샘플 카탈로그는 실시간 가격·재고가 아닙니다. `big notebook`, `shoes for running`, `bicycle`의 실제 자동 매칭 복구는 아직 확인되지 않았습니다. 명시적으로 선택한 추가 전략은 아래와 같으며, 403 이후에는 헤더·프록시·세션을 바꿔 자동 재시도하지 않습니다. [검토 결과와 변경 사항](docs/target-search-review.md)을 참고하세요.
 
-GitHub·Render 배포 재개를 준비 중이며 예산은 0원입니다. 현재 저장소는 로컬 실행용 소스이며, 운영 인증 gateway와 컨테이너 배포 구현은 아직 없습니다. Render 무료 환경의 업로드 소실 조건 확인과 인증 구현이 필요하며, 확장 프로그램의 원격 연결도 아직 지원하지 않습니다. 현재 상태와 선행 조건은 [배포 계획](deploy.md)을 확인하세요.
+사용자가 예산 0원·업로드 소실 가능성을 승인한 **개인용 체험 배포**를 준비합니다. 비밀번호/세션 게이트웨이, 로컬·Render 확장 연결과 컨테이너 설정을 제공합니다. 무료 서버는 유휴 종료·재시작·재배포 시 문서와 선택 상품을 잃을 수 있으므로 필요한 결과는 HTML로 다운로드하세요. 실제 배포 상태와 설정 순서는 [배포 계획](deploy.md)을 확인하세요.
 
 ## 빠른 시작
 

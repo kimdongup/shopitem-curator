@@ -1,5 +1,15 @@
 /* Shared by the worker and dependency-free Node tests. */
 globalThis.CuratorProtocol = Object.freeze({
+  backendOrigin(value = 'http://127.0.0.1:8787') {
+    if (typeof value !== 'string') throw new Error('Curator 서버 주소를 입력하세요.');
+    const url = new URL(value.trim());
+    if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
+        !(url.origin === 'http://127.0.0.1:8787' ||
+          (url.protocol === 'https:' && !url.port && /^[a-z0-9][a-z0-9-]*\.onrender\.com$/.test(url.hostname)))) {
+      throw new Error('로컬 서버 또는 HTTPS Render 앱 주소만 사용할 수 있습니다.');
+    }
+    return url.origin;
+  },
   targetUrl(value, productOnly = false) {
     if (typeof value !== 'string' || /[\x00-\x20\x7f]/.test(value)) return null;
     try {

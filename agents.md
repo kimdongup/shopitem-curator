@@ -80,14 +80,15 @@ Flutter 앱은 외부 OCR 또는 Target 데이터 API를 직접 호출하지 않
 
 ## 📁 3. 디렉토리 구조 (Directory Structure)
 
-### 브라우저 선택 모드 (로컬 MVP)
+### 브라우저 선택 모드 (로컬 / 인증된 개인용 Render 체험)
 
 - 기본 로컬 조립은 `BrowserProjectGateway`를 BLoC에 주입합니다. OCR 목록을 만든 후 사용자의 상품 선택을 기다리며 Target 조회 포트를 호출하지 않습니다.
 - Chrome `extension/`은 Target 페이지 위의 이동식 위젯으로 일반 검색 페이지를 열고, 사용자 클릭으로 현재 PDP URL과 직접 선택한 PNG 영역만 로컬 백엔드에 전달합니다. 쿠키/세션/상품 DOM 수집은 하지 않습니다.
 - `BrowserProjectStore`는 파일별 목록·선택 결과를 `assets/.curator_projects/`에 저장합니다. 문서 삭제와 함께 해당 프로젝트·캡처도 보관 삭제하고 확장 연결 권한을 폐기합니다. 이 저장소는 공개 Git 및 Flutter 번들에 포함하지 않습니다.
-- `/v1/browser-projects/*`는 기존 앱 인증을 사용합니다. `/v1/browser-bridge/*`는 loopback 전용이며 2분 일회용 코드 → 8시간 프로젝트 한정 연결 권한으로 인증합니다. 다른 앱 라우트의 인증/CORS는 완화하지 않습니다.
+- `/v1/browser-projects/*`는 기존 앱 인증을 사용합니다. 내부 `/v1/browser-bridge/*`는 loopback 전용이며 2분 일회용 코드 → 8시간 프로젝트 한정 연결 권한으로 인증합니다. Render 게이트웨이는 지정된 4개 bridge 라우트만 전달하고 신뢰 헤더 경계 및 프로젝트 인증을 함께 적용합니다. 다른 앱 라우트의 인증/CORS는 완화하지 않습니다.
 - 선택한 이미지는 `ManifestRebuilder`를 통해 기존 Pure Dart 합성·윤곽선 경로에 합류합니다. UI는 BLoC 이벤트/상태만 사용하며 Flutter 의존성을 Core에 추가하지 않습니다.
-- 원격 배포에서 확장 연결은 아직 지원하지 않습니다. 자동 모드는 유지하되 Target 접근 제한은 별도 문제로 명시합니다.
+- 원격 확장은 사용자가 입력하고 권한을 허용한 정확한 HTTPS Render 호스트에만 연결합니다. 앱 비밀번호·세션을 확장에 전달하지 않습니다. 자동 모드는 유지하되 Target 접근 제한은 별도 문제로 명시합니다.
+- `curator_web_server.dart`는 개인용 비밀번호/메모리 세션 게이트웨이와 내부 프록시를 한 프로세스로 소유합니다. 무료 배포는 영구 저장과 다중 사용자 소유권을 제공하지 않습니다. 비밀값은 서버 런타임에만 주입합니다.
 
 ```text
 shopitem-curator/

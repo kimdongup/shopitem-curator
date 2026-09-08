@@ -25,7 +25,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: NotoSansKR
+      fonts:
+        - asset: assets/fonts/NotoSansKR.ttf
   assets:
+    - assets/fonts/OFL.txt
     # Explicit public samples only. Runtime uploads are read from the backend,
     # never bundled into a public client.
     - assets/images/new.jpg
