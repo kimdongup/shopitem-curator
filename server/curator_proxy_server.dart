@@ -526,6 +526,12 @@ final class CuratorProxyServer {
           error.message,
           requestId,
           code: error.code);
+    } on OcrException catch (error) {
+      // Opening a browser project runs OCR too; preserve its safe error code.
+      final failure = _ocrProxyFailure(error);
+      _writeJsonError(request.response, failure.statusCode,
+          failure.publicMessage, requestId,
+          code: failure.code);
     } on DocumentStorageException catch (error) {
       _writeJsonError(
           request.response, error.statusCode, error.message, requestId,

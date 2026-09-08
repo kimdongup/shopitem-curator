@@ -55,6 +55,20 @@ void main() {
     final ignore = File('.gitignore').readAsLinesSync();
     final dockerIgnore = File('.dockerignore').readAsLinesSync();
     expect(dockerIgnore, contains('**'));
+    // Re-including a Docker directory also includes its descendants. Deny
+    // them again before allowing individual reviewed files, including locally
+    // ignored uploads, cached projects and trash that GitHub does not have.
+    for (final directory in [
+      'tool',
+      'assets',
+      'assets/fonts',
+      'assets/images',
+      'assets/items'
+    ]) {
+      final index = dockerIgnore.indexOf('!$directory/');
+      expect(index, greaterThanOrEqualTo(0));
+      expect(dockerIgnore[index + 1], '$directory/**');
+    }
     expect(
         ignore,
         containsAll([

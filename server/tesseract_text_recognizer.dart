@@ -36,6 +36,9 @@ final class TesseractTextRecognizer implements ImageTextRecognizer {
   final Duration timeout;
   final int maxConcurrentJobs;
   final Set<Process> _processes = {};
+  // Minimal containers may ship traineddata without tessdata/configs/tsv.
+  // Set the output parameter directly instead of loading that optional file.
+  static const _tsvOptions = ['-c', 'tessedit_create_tsv=1'];
   int _activeJobs = 0;
   bool _closed = false;
   Future<bool>? _checking;
@@ -109,7 +112,7 @@ final class TesseractTextRecognizer implements ImageTextRecognizer {
         language,
         '--psm',
         '3',
-        'tsv'
+        ..._tsvOptions
       ], remaining());
       return await _refineTableNames(
           parseTsv(output), normalized, temporary, remaining);
@@ -184,7 +187,7 @@ final class TesseractTextRecognizer implements ImageTextRecognizer {
         language,
         '--psm',
         '7',
-        'tsv'
+        ..._tsvOptions
       ], remaining());
       final revised = parseTsv(output)
           .where((w) => RegExp(r'[a-zA-Z]{2}|\d|\*').hasMatch(w.text))

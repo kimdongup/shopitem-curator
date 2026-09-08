@@ -1,6 +1,8 @@
 // Requires: npm ci --prefix server/browser --ignore-scripts
 // CURATOR_SMOKE_URL and CURATOR_SMOKE_PASSWORD are never printed or persisted.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {chromium} = require('../server/browser/node_modules/playwright-core');
 let stage = 'configuration';
 
@@ -38,7 +40,22 @@ let stage = 'configuration';
     });
     assert.equal(documents.status, 200);
     assert.ok(documents.data.documents.length > 0);
-    stage = 'sample OCR';
+    stage = 'uncached sample OCR';
+    // Project/open may return persisted entries without calling the engine.
+    // Exercise actual recognition before checking the project workflow.
+    const ocr = await page.evaluate(async imageBase64 => {
+      const response = await fetch('/v1/ocr/extract', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_image_path: 'assets/images/new.jpg', image_base64: imageBase64}),
+      });
+      return {status: response.status, data: await response.json()};
+    }, fs.readFileSync(path.join(__dirname, '../assets/images/new.jpg')).toString('base64'));
+    console.log(`Sample OCR: HTTP ${ocr.status}, ${ocr.data.items?.length ?? 0} items.`);
+    assert.equal(ocr.status, 200);
+    stage = 'uncached sample OCR contents';
+    assert.deepEqual(ocr.data.items.map(item => item.clean_name),
+      ['Hand sanitizer', 'White Board Markers', 'Backpack']);
+    stage = 'sample project';
     const project = await page.evaluate(async () => {
       const response = await fetch('/v1/browser-projects/open', {
         method: 'POST', headers: {'Content-Type': 'application/json'},

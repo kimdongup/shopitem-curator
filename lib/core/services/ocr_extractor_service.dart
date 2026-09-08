@@ -151,7 +151,7 @@ class OcrExtractorService implements ItemExtractionGateway {
       s.toLowerCase().replaceAll(RegExp(r'[^a-z가-힣]'), '');
   static String _stripBullet(String s) => s
       .trim()
-      .replaceFirst(RegExp(r'^(?:[•●·*¢\-–□✓✔]\s+|\d+[.)]\s+)'), '')
+      .replaceFirst(RegExp(r'^(?:[•●·*¢+»\-–□✓✔]\s+|\d+[.)]\s+)'), '')
       .replaceAll(RegExp(r'^[|\[\]_\s]+|[|/✓✔¥.\s]+$'), '')
       .trim();
   static String _clean(String s) => _stripBullet(s)

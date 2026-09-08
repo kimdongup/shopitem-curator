@@ -170,9 +170,9 @@ node extension/test/content_smoke.cjs
 ### Render에서 이용하기
 
 1. 최신 `extension/`을 내려받고 `chrome://extensions`에서 Curator의 **새로고침**을 누릅니다. Target 탭도 새로고침합니다.
-2. Render 앱을 먼저 열어 서버가 깨어나기를 기다립니다. 서비스 Environment의 `CURATOR_PREVIEW_PASSWORD`로 로그인합니다. 이 비밀번호는 확장 팝업에 넣지 않습니다.
+2. [Render 앱](https://shopitem-curator.onrender.com)을 먼저 열어 서버가 깨어나기를 기다립니다. [서비스 Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)의 **Environment → CURATOR_PREVIEW_PASSWORD** 값을 확인해 로그인합니다. 이 비밀번호는 확장 팝업에 넣지 않습니다.
 3. 앱 1단계에서 사진을 선택하고 2단계에서 **확장 프로그램 연결 코드**를 누릅니다.
-4. Target 탭의 확장 팝업에서 **Curator 서버 주소**에 Render 앱의 `https://…onrender.com` 주소를 입력합니다. 로컬로 돌아가려면 `http://127.0.0.1:8787`을 입력합니다.
+4. Target 탭의 확장 팝업에서 **Curator 서버 주소**에 `https://shopitem-curator.onrender.com`을 입력합니다. 로컬로 돌아가려면 `http://127.0.0.1:8787`을 입력합니다.
 5. 일회용 코드를 입력하고 **프로젝트 연결**을 누릅니다. Chrome이 묻는 **해당 Render 서버의 연결 권한**을 허용합니다. 모든 사이트 권한이나 Target 쿠키 권한은 필요하지 않습니다. [Chrome 선택적 호스트 권한](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions)
 6. 기존 스토리보드처럼 품목 검색 → 이미지 영역 선택 → 담기를 반복하고, 앱에서 **캔버스 시각화 및 인터랙션**을 누릅니다.
 7. 필요한 결과는 **HTML 다운로드**로 보관합니다. 무료 서버가 쉬거나 재시작·재배포되면 문서·캡처·연결이 사라질 수 있습니다. HTML은 프로젝트 복원용 백업이 아니므로 원본 사진도 보관하세요.

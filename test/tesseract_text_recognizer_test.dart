@@ -52,6 +52,20 @@ void main() {
             .having((e) => e.kind, 'kind', OcrFailureKind.invalidImage)));
   }, skip: Platform.isWindows);
 
+  test('TSV output does not require an installed config file', () async {
+    final engine = TesseractTextRecognizer(executable: await _fakeEngine(r'''
+case "$*" in
+  *"--psm 3 -c tessedit_create_tsv=1") ;;
+  *) exit 1 ;;
+esac
+printf '5\t1\t1\t1\t1\t1\t10\t20\t40\t15\t95\tRuler\n'
+'''));
+    addTearDown(engine.close);
+    final words =
+        await engine.recognize(img.encodePng(img.Image(width: 20, height: 20)));
+    expect(words.single.text, 'Ruler');
+  }, skip: Platform.isWindows);
+
   test('timeout kills process and concurrent requests are bounded', () async {
     final engine = TesseractTextRecognizer(
         executable: await _fakeEngine('exec /bin/sleep 30'),

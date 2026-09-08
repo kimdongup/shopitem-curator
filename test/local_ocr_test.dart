@@ -31,6 +31,29 @@ void main() {
         [false, false, true, false, false, false]);
   });
 
+  test('container OCR bullet variants do not pollute names or quantities',
+      () async {
+    final items = await OcrExtractorService(
+        recognizer: _Recognizer(_words([
+      '+ Hand sanitizer',
+      '» White Board Markers',
+      '» Backpack*',
+      '+ 3 Rulers',
+      'C++ notebook',
+      '+PLUS notebook',
+    ]))).extractItemsFromImage('list.png', imageBytes: [1]);
+    expect(items.map((e) => e.cleanName), [
+      'Hand sanitizer',
+      'White Board Markers',
+      'Backpack',
+      'Rulers',
+      'C++ notebook',
+      '+PLUS notebook',
+    ]);
+    expect(items.map((e) => e.quantity), [1, 1, 1, 3, 1, 1]);
+    expect(items[2].isPersonal, isTrue);
+  });
+
   test('table coordinates separate item, description, quantity and duplicates',
       () async {
     final words = <RecognizedWord>[

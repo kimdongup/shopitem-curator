@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:shopitem_curator/core/contracts/catalog_gateways.dart';
 import 'package:shopitem_curator/core/contracts/curator_use_cases.dart';
+import 'package:shopitem_curator/core/contracts/image_text_recognizer.dart';
 import 'package:shopitem_curator/core/services/backend_proxy_gateway.dart';
 import 'package:shopitem_curator/core/services/binary_resource_loader.dart';
 import 'package:shopitem_curator/core/services/curation_pipeline_service.dart';
@@ -23,6 +24,7 @@ void main() {
   late http.Client client;
   late DateTime now;
   var extractionCount = 0;
+  OcrFailureKind? extractionFailure;
   var targetCalls = 0;
   const extensionId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   final png = img.encodePng(img.Image(width: 32, height: 32));
@@ -33,6 +35,7 @@ void main() {
       now: () => now,
       extract: (path, bytes) async {
         extractionCount++;
+        if (extractionFailure != null) throw OcrException(extractionFailure!);
         return const [
           ExtractedItemEntry(
               rawName: 'big notebook',
@@ -49,6 +52,7 @@ void main() {
   setUp(() async {
     now = DateTime.utc(2026, 9, 7);
     extractionCount = 0;
+    extractionFailure = null;
     targetCalls = 0;
     temp = await Directory.systemTemp.createTemp('curator-browser-test-');
     documents = FileSourceDocumentRepository(assetsDirectory: temp);
@@ -120,6 +124,31 @@ void main() {
         'target_url': 'https://www.target.com/p/notebook/-/A-12345678?ref=test',
         'image_base64': base64Encode(png),
       };
+
+  test('project OCR returns actionable errors instead of a generic 500',
+      () async {
+    final path = await gateway.importDocument('list.png', png);
+    for (final (kind, status, code) in [
+      (OcrFailureKind.noItems, 422, 'ocr_no_items'),
+      (OcrFailureKind.busy, 429, 'ocr_busy'),
+      (OcrFailureKind.engineUnavailable, 503, 'ocr_engine_unavailable'),
+    ]) {
+      extractionFailure = kind;
+      final response =
+          await client.post(server.baseUri.resolve('/v1/browser-projects/open'),
+              headers: {
+                'Authorization': 'Bearer app-test-token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'source_image_path': path}));
+      expect(response.statusCode, status);
+      expect(json(response)['error']['code'], code);
+      expect(json(response)['error']['request_id'],
+          response.headers['x-request-id']);
+    }
+    extractionFailure = null;
+    expect((await gateway.openBrowserProject(path)).entries, hasLength(2));
+  });
 
   test('pair → crop → project resume → PNG canvas uses no Target request',
       () async {

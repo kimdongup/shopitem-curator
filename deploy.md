@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-인증 게이트웨이·원격 확장 연결·Dockerfile·render.yaml을 GitHub main 커밋 [`918190e`](https://github.com/kimdongup/shopitem-curator/commit/918190e90f0e5cdaf4ad956e5063ea0ba636af3c)에 반영했다. 전체 테스트 316개 통과(선택적 통합 6개 제외), 정적 분석 오류 없음, 확장 테스트 7개 통과, Blueprint 유효를 확인했다. 512 MiB/0.5 CPU 컨테이너에서 실제 Chrome 로그인 → 공개 샘플 OCR → 한글 화면 → 로그아웃 검증도 통과했다. 화면 로딩은 외부 서버에 연결하지 않았다.
+인증 게이트웨이·원격 확장 연결·Dockerfile·render.yaml을 GitHub main에 반영했다. 초기 로컬 브라우저 검사는 통과했지만 저장된 프로젝트를 재사용해 실제 OCR 실패를 놓쳤다. 아래 재발 방지 항목 적용 후 512 MiB/0.5 CPU의 새 컨테이너에서 로그인 → 캐시 없는 실제 샘플 OCR 3품목 → 프로젝트 생성 → Flutter 화면 → CSP → 로그아웃을 재검증했다. 정적 분석 오류 없음, 컨테이너 내 승인 에셋 33개만 포함됨을 확인했다.
 
 사용자의 최종 승인 후 Render **Free / Oregon** Web Service 하나를 생성했다. 서비스 ID는 `srv-dafpag5g1s2s73fi2arg`, 앱 주소는 [shopitem-curator.onrender.com](https://shopitem-curator.onrender.com), 관리는 [Render Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)에서 한다. 자동 재배포는 꺼져 있다. 현재 첫 배포의 Live 및 실제 접속 검증을 진행 중이다.
 
@@ -69,6 +69,12 @@ Flutter **3.47.2**, 커밋 `d3b14c876900e553bc736ca19295fc09e3853e8e`를 고정�
 Minimus BusyBox 빌더/런타임을 digest로 고정하고 검증된 UID 1000으로 실행한다. Tesseract 5.5.3-r0·영어 데이터·libavif apps 1.4.2-r0와 필요한 동적 라이브러리만 복사한다. 런타임에는 Flutter SDK·Git·apk를 넣지 않는다.
 
 Render 첫 빌드에서는 Flutter Gradle 아카이브의 소유자 UID 397546 복원이 실패했다. 빌더 단계의 `TAR_OPTIONS=--no-same-owner`로 파일을 빌드 사용자 소유로 추출하도록 수정했다. 소유권 변경 권한을 제거한 컨테이너에서 실패 재현과 수정 성공을 확인했으며, 이 설정은 최종 런타임에 전달되지 않는다.
+
+첫 Live 검사에서는 샘플 OCR이 실패했다. 최소 런타임에 `tessdata/configs/tsv`가 없는데 파일명을 옵션으로 전달해 일반 텍스트가 반환되고 있었다. 두 OCR 경로 모두 `-c tessedit_create_tsv=1`로 출력 형식을 직접 지정한다. [Tesseract 공식 옵션 설명](https://github.com/tesseract-ocr/tesseract/blob/main/doc/tesseract.1.asc). 프로젝트 생성의 OCR 오류도 일반 500 대신 `ocr_no_items`, `ocr_busy`, `ocr_engine_unavailable` 등 안전한 코드로 반환한다.
+
+로컬 Docker 검사와 Render 결과가 달랐던 이유도 수정했다. Docker의 디렉터리 재포함 규칙이 개인 업로드·프로젝트·휴지통까지 포함해 로컬에서는 저장된 결과가 재사용됐다. 각 디렉터리를 연 뒤 하위 내용을 다시 제외하고 승인된 파일만 허용한다. 해당 개인 파일은 Git 추적 대상이 아니므로 GitHub에서 소스를 가져오는 Render 배포에는 올라가지 않았다. 브라우저 검사는 프로젝트 열기 전에 `/v1/ocr/extract`로 공개 샘플의 실제 세 항목을 검증한다.
+
+컨테이너 OCR이 목록 기호를 `+`, `»`로 인식하는 차이는 Pure Dart 목록 파서에서 정리한다. 줄 앞에서 공백으로 구분된 기호만 제거하므로 `C++ notebook`, `+PLUS notebook` 같은 상품명은 보존한다.
 
 Minimus 갤러리는 선택한 BusyBox 1.38.0 **기본 이미지**의 알려진 취약점을 0개로 표시한다. 이는 OCR/AVIF 라이브러리를 추가한 최종 이미지 전체의 스캔 결과가 아니다. [이미지 사양](https://images.minimus.io/images/busybox/lines/latest/versions/1.38.0/specification)
 
