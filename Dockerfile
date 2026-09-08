@@ -4,6 +4,10 @@
 FROM reg.mini.dev/busybox:latest-dev@sha256:6932aeda42156cf959bc30a80f828fad0105fa6bf2f1de96d92d0d6b12672f8c AS builder
 USER root
 RUN apk add --no-cache bash git curl unzip xz
+# Render's rootless builder cannot map arbitrary UIDs in Flutter archives
+# (e.g. Gradle wrapper UID 397546). Keep extracted files owned by the builder.
+# This setting is build-only and does not propagate to the runtime stage.
+ENV TAR_OPTIONS=--no-same-owner
 RUN git clone --depth 1 --branch 3.47.2 https://github.com/flutter/flutter.git /opt/flutter \
     && test "$(git -C /opt/flutter rev-parse HEAD)" = d3b14c876900e553bc736ca19295fc09e3853e8e \
     && /opt/flutter/bin/flutter config --no-analytics --enable-web

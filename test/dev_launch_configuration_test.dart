@@ -4,6 +4,18 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
+  test('Render archive ownership workaround stays in the build stage', () {
+    final stages = File('Dockerfile')
+        .readAsStringSync()
+        .split(RegExp(r'^FROM ', multiLine: true));
+    expect(stages, hasLength(4));
+    expect(stages[1], contains('ENV TAR_OPTIONS=--no-same-owner'));
+    expect(stages[1].indexOf('ENV TAR_OPTIONS='),
+        lessThan(stages[1].indexOf('RUN git clone')));
+    expect(stages.last, isNot(contains('TAR_OPTIONS')));
+    expect(stages.last, isNot(contains('USER root')));
+  });
+
   test('IDE launches proxy from login env and strips secrets from Flutter', () {
     final launch = jsonDecode(File('.vscode/launch.json').readAsStringSync())
         as Map<String, dynamic>;

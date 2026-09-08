@@ -6,7 +6,7 @@
 
 인증 게이트웨이·원격 확장 연결·Dockerfile·render.yaml을 GitHub main 커밋 [`918190e`](https://github.com/kimdongup/shopitem-curator/commit/918190e90f0e5cdaf4ad956e5063ea0ba636af3c)에 반영했다. 전체 테스트 316개 통과(선택적 통합 6개 제외), 정적 분석 오류 없음, 확장 테스트 7개 통과, Blueprint 유효를 확인했다. 512 MiB/0.5 CPU 컨테이너에서 실제 Chrome 로그인 → 공개 샘플 OCR → 한글 화면 → 로그아웃 검증도 통과했다. 화면 로딩은 외부 서버에 연결하지 않았다.
 
-**Render는 아직 미배포다.** 서비스 생성 명령이 실행 전 승인 검사에서 보류되었다. 서비스 목록에도 shopitem-curator가 없음을 재확인했다. 새 서비스 생성에 대한 명시적 최종 승인 후 무료 서비스 하나를 생성하고 실제 HTTPS 주소/Live 상태를 확인한다. 아래 링크는 실행 중인 앱이 아니라 **배포 설정 화면**이다.
+사용자의 최종 승인 후 Render **Free / Oregon** Web Service 하나를 생성했다. 서비스 ID는 `srv-dafpag5g1s2s73fi2arg`, 앱 주소는 [shopitem-curator.onrender.com](https://shopitem-curator.onrender.com), 관리는 [Render Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)에서 한다. 자동 재배포는 꺼져 있다. 현재 첫 배포의 Live 및 실제 접속 검증을 진행 중이다.
 
 사용자는 Render 결제 수단이 등록되어 있지 않다고 확인했다. 추가 과금 자원이나 결제 수단을 등록하지 않는다. 무료 공유 한도 초과 시 빌드·서비스가 제한될 수 있다.
 
@@ -15,7 +15,7 @@
 1. Dashboard Billing에서 기존 서비스들과 공유하는 무료 사용량, 결제 수단, 빌드·대역폭 초과 비용 설정을 확인한다. **Free 인스턴스 선택만으로 총비용 0원을 보장하지 않는다.** 초과 유료 사용은 승인되지 않았다. [Render Free 제한](https://render.com/docs/free)
 2. 배포용 파일을 GitHub main에 올린 뒤 [Blueprint 생성 화면](https://dashboard.render.com/blueprint/new?repo=https://github.com/kimdongup/shopitem-curator)을 연다. CLI로 서비스를 생성했다면 중복 생성하지 않는다.
 3. My Workspace, shopitem-curator Web Service 하나, **Free / Oregon**을 확인한다. 디스크·DB·Worker는 추가하지 않는다.
-4. Apply로 배포한다. Render가 `CURATOR_PREVIEW_PASSWORD`를 무작위로 생성한다. 비밀번호는 소스·Flutter 빌드에 넣지 않는다.
+4. Blueprint 방식은 Apply 시 Render가 `CURATOR_PREVIEW_PASSWORD`를 생성한다. 이번 CLI 생성에서는 256-bit 무작위 비밀번호를 만들어 서버 환경에만 등록했다. 비밀번호는 소스·Flutter 빌드·채팅에 넣지 않는다.
 5. 서비스 Environment에서 위 비밀번호를 확인한다. 비밀번호를 채팅이나 GitHub에 붙여 넣지 않는다.
 6. 상태가 Live이면 Dashboard에 표시된 실제 HTTPS 앱 주소를 열고 로그인한다.
 7. Chrome 확장 팝업의 서버 주소에 이 앱 주소를 입력하고 해당 호스트 연결 권한을 허용한다. 앱 2단계의 새 연결 코드로 연결한다.
@@ -68,13 +68,15 @@ Flutter **3.47.2**, 커밋 `d3b14c876900e553bc736ca19295fc09e3853e8e`를 고정�
 
 Minimus BusyBox 빌더/런타임을 digest로 고정하고 검증된 UID 1000으로 실행한다. Tesseract 5.5.3-r0·영어 데이터·libavif apps 1.4.2-r0와 필요한 동적 라이브러리만 복사한다. 런타임에는 Flutter SDK·Git·apk를 넣지 않는다.
 
+Render 첫 빌드에서는 Flutter Gradle 아카이브의 소유자 UID 397546 복원이 실패했다. 빌더 단계의 `TAR_OPTIONS=--no-same-owner`로 파일을 빌드 사용자 소유로 추출하도록 수정했다. 소유권 변경 권한을 제거한 컨테이너에서 실패 재현과 수정 성공을 확인했으며, 이 설정은 최종 런타임에 전달되지 않는다.
+
 Minimus 갤러리는 선택한 BusyBox 1.38.0 **기본 이미지**의 알려진 취약점을 0개로 표시한다. 이는 OCR/AVIF 라이브러리를 추가한 최종 이미지 전체의 스캔 결과가 아니다. [이미지 사양](https://images.minimus.io/images/busybox/lines/latest/versions/1.38.0/specification)
 
 `.dockerignore`는 기본 거절 방식이다. 공개 샘플만 허용하며 개인 문서·휴지통·확장 캡처·.env를 중간 레이어에도 포함하지 않는다.
 
 | 변수 | 용도 |
 |---|---|
-| CURATOR_PREVIEW_PASSWORD | Render 생성 비밀번호, 런타임 전용 |
+| CURATOR_PREVIEW_PASSWORD | 서버에 등록한 무작위 비밀번호, 런타임 전용 |
 | RENDER_EXTERNAL_URL | Render가 제공하는 실제 앱 origin |
 | CURATOR_PUBLIC_ORIGIN | 선택적 origin 재정의, 일반 배포에서는 생략 |
 | PORT | 공개 포트, 기본 10000 |
