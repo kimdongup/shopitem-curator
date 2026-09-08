@@ -4,9 +4,11 @@
 
 ## 현재 상태
 
-인증 게이트웨이·원격 확장 연결·Dockerfile·render.yaml을 GitHub main에 반영했다. 초기 로컬 브라우저 검사는 통과했지만 저장된 프로젝트를 재사용해 실제 OCR 실패를 놓쳤다. 아래 재발 방지 항목 적용 후 512 MiB/0.5 CPU의 새 컨테이너에서 로그인 → 캐시 없는 실제 샘플 OCR 3품목 → 프로젝트 생성 → Flutter 화면 → CSP → 로그아웃을 재검증했다. 정적 분석 오류 없음, 컨테이너 내 승인 에셋 33개만 포함됨을 확인했다.
+인증 게이트웨이·원격 확장 연결·Dockerfile·render.yaml을 GitHub main에 반영했다. 초기 로컬 브라우저 검사는 통과했지만 저장된 프로젝트를 재사용해 실제 OCR 실패를 놓쳤다. 아래 재발 방지 항목 적용 후 512 MiB/0.5 CPU의 새 컨테이너에서 로그인 → 캐시 없는 실제 샘플 OCR 3품목 → 프로젝트 생성 → Flutter 화면 → CSP → 로그아웃을 재검증했다. 전체 테스트 **320개 통과**(선택적 통합 6개 제외), 확장 테스트 7개 통과, 정적 분석 오류 없음, 컨테이너 내 승인 에셋 33개만 포함됨을 확인했다.
 
-사용자의 최종 승인 후 Render **Free / Oregon** Web Service 하나를 생성했다. 서비스 ID는 `srv-dafpag5g1s2s73fi2arg`, 앱 주소는 [shopitem-curator.onrender.com](https://shopitem-curator.onrender.com), 관리는 [Render Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)에서 한다. 자동 재배포는 꺼져 있다. 현재 첫 배포의 Live 및 실제 접속 검증을 진행 중이다.
+사용자의 최종 승인 후 Render **Free / Oregon** Web Service 하나를 생성했다. 서비스 ID는 `srv-dafpag5g1s2s73fi2arg`, 앱 주소는 [shopitem-curator.onrender.com](https://shopitem-curator.onrender.com), 관리는 [Render Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)에서 한다. 자동 재배포는 꺼져 있다. 실행 코드 [`12faa4e`](https://github.com/kimdongup/shopitem-curator/commit/12faa4eb432930db3f0617697d6b73fe38fca411)의 배포 `dep-dafpo55g1s2s73fk0vd0`가 **Live**로 전환됐다(2026-09-08 05:26 UTC / Honolulu 2026-09-07 19:26).
+
+실제 HTTPS 주소의 Chrome에서 로그인, 인증된 문서 목록, 캐시 없는 샘플 OCR 3품목, 오류 없는 한글 Flutter 화면, 외부 origin 요청 없음, CSP, 로그아웃을 확인했다. 별도 공개 샘플 복사본으로 업로드 → 새 프로젝트 OCR → 일회용 확장 코드 → 상품 PNG 저장/조회 → 연결 해제도 API 경로로 검증했다. 검사용 복사본과 캡처만 보관 삭제했고 원본 문서는 유지했다. 실제 Target 페이지에서의 사용자 확장 조작이나 자동 검색 성공을 대신 검증한 것은 아니다. 앱 초기 OCR과 별도 진단 OCR은 순차 실행해 무료 서버의 동시 작업 1개 제한에 따른 검사 간섭도 방지한다.
 
 사용자는 Render 결제 수단이 등록되어 있지 않다고 확인했다. 추가 과금 자원이나 결제 수단을 등록하지 않는다. 무료 공유 한도 초과 시 빌드·서비스가 제한될 수 있다.
 

@@ -18,7 +18,7 @@ Core는 UI 타입을 알지 못하며, UI는 BLoC 이벤트와 상태 스트림�
 
 Target 서버용 API 사용 권한이 없는 기본 환경에서는 RedSky API를 직접 호출하지 않습니다. 공개 HTML에서 상품을 찾지 못하면 원인을 표시하며, 저장된 샘플 카탈로그는 실시간 가격·재고가 아닙니다. `big notebook`, `shoes for running`, `bicycle`의 실제 자동 매칭 복구는 아직 확인되지 않았습니다. 명시적으로 선택한 추가 전략은 아래와 같으며, 403 이후에는 헤더·프록시·세션을 바꿔 자동 재시도하지 않습니다. [검토 결과와 변경 사항](docs/target-search-review.md)을 참고하세요.
 
-사용자가 예산 0원·업로드 소실 가능성을 승인한 **개인용 체험 배포**를 준비합니다. 비밀번호/세션 게이트웨이, 로컬·Render 확장 연결과 컨테이너 설정을 제공합니다. 무료 서버는 유휴 종료·재시작·재배포 시 문서와 선택 상품을 잃을 수 있으므로 필요한 결과는 HTML로 다운로드하세요. 실제 배포 상태와 설정 순서는 [배포 계획](deploy.md)을 확인하세요.
+사용자가 예산 0원·업로드 소실 가능성을 승인한 **개인용 무료 체험**이 [Render에서 실행 중](https://shopitem-curator.onrender.com)입니다. [서비스 Dashboard](https://dashboard.render.com/web/srv-dafpag5g1s2s73fi2arg)의 **Environment → CURATOR_PREVIEW_PASSWORD** 값으로 로그인하세요. 실제 HTTPS 로그인·샘플 OCR·확장 브리지 API를 검증했습니다. 무료 서버는 유휴 종료·재시작·재배포 시 문서와 선택 상품을 잃을 수 있으므로 필요한 결과는 HTML로 다운로드하세요. [Render 이용 순서](USAGE.md#render에서-이용하기)와 [배포 상태·제약](deploy.md)을 확인하세요.
 
 ## 빠른 시작
 

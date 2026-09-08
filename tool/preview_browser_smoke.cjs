@@ -31,7 +31,14 @@ let stage = 'configuration';
     stage = 'login form';
     await page.goto(base + '/login');
     await page.locator('input[name=password]').fill(password);
-    await Promise.all([page.waitForURL(base + '/'), page.getByRole('button', {name: '로그인', exact: true}).click()]);
+    // The app starts document OCR after login. Wait for that request before
+    // starting the independent engine check (the free server runs one job).
+    const initialProject = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/v1/browser-projects/open' &&
+      response.request().method() === 'POST', {timeout: 60000});
+    const [, , opened] = await Promise.all([page.waitForURL(base + '/'),
+      page.getByRole('button', {name: '로그인', exact: true}).click(), initialProject]);
+    assert.equal(opened.status(), 200);
     stage = 'authenticated document list';
     // Check actual same-origin browser cookies, not manually injected auth.
     const documents = await page.evaluate(async () => {
